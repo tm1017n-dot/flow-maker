@@ -62,6 +62,10 @@
   }
   function edgePath(a,b){
     const wa=SIZES[a.type][0]/2, wb=SIZES[b.type][0]/2,ha=SIZES[a.type][1]/2,hb=SIZES[b.type][1]/2;
+    if(Math.abs(b.x-a.x)<110){
+      const down=b.y>=a.y, y1=a.y+(down?ha:-ha), y2=b.y+(down?-hb:hb), mid=(y1+y2)/2;
+      return {d:`M ${a.x} ${y1} L ${a.x} ${mid} L ${b.x} ${mid} L ${b.x} ${y2}`,lx:(a.x+b.x)/2+44,ly:mid};
+    }
     if(b.x>a.x+35){let x1=a.x+wa,x2=b.x-wb,mid=(x1+x2)/2;return {d:`M ${x1} ${a.y} L ${mid} ${a.y} L ${mid} ${b.y} L ${x2} ${b.y}`,lx:mid,ly:(a.y+b.y)/2};}
     const via=Math.min(a.y-ha,b.y-hb)-45;return {d:`M ${a.x} ${a.y-ha} L ${a.x} ${via} L ${b.x} ${via} L ${b.x} ${b.y-hb}`,lx:(a.x+b.x)/2,ly:via-10};
   }
