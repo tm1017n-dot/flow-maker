@@ -30,6 +30,7 @@ const context={console:{...console,error(error){exportErrors.push(error);}},Blob
 context.globalThis=context;
 let code=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 code=code.replace(/\}\)\(\);\s*$/, 'globalThis.api={load,validate,sample,select,changed,scheduleRecovery,svgMarkup,edgePath,nodeGeometry,wrapText,arrange,addNode,addLane,getDiagnostics,fitCanvas,pageSvg,pageGeometry,preview,changeExportOptions,editingOverlay,portPoint,closestPort,nearestSegment,get model(){return model},get dirty(){return dirty},get selected(){return selected}};})();');
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../manual.js'),'utf8'),context);
 vm.runInNewContext(code,context);const api=context.api;
 const flush=()=>{const pending=[...timers.values()];timers.clear();pending.forEach(fn=>fn());};
 const fire=(id,event,target)=>events.get(`${id}:${event}`)({target,...target.event});
@@ -162,9 +163,9 @@ assert.equal(get('themeDark')['aria-pressed'],'true');assert.equal(get('themeLig
 assert.equal(storage.get('flow-maker-theme-v1'),'dark');assert.equal(JSON.stringify(api.model),themeModel);
 assert.equal(api.dirty,false);assert.equal(get('undoBtn').disabled,true);assert.equal(api.pageSvg(),themeExport);
 const restartedElements=new Map();
-const restartedGet=id=>{if(!restartedElements.has(id))restartedElements.set(id,new Element(id));return restartedElements.get(id);};
+const restartedGet=id=>{if(!restartedElements.has(id)){const element=new Element(id);element.addEventListener=()=>{};restartedElements.set(id,element);}return restartedElements.get(id);};
 const restarted={...context,document:{...context.document,documentElement:new Element('restarted-html'),getElementById:restartedGet,addEventListener(){}},window:{addEventListener(){}},setTimeout:()=>0,clearTimeout(){}};
-restarted.globalThis=restarted;vm.runInNewContext(code,restarted);
+restarted.globalThis=restarted;vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../manual.js'),'utf8'),restarted);vm.runInNewContext(code,restarted);
 assert.equal(restarted.document.documentElement.dataset.theme,'dark');assert.equal(restartedGet('themeDark')['aria-pressed'],'true');
 // Saving a diagram clears its recovery record, without deleting the appearance preference.
 get('saveBtn').onclick();assert.equal(storage.get('flow-maker-theme-v1'),'dark');
@@ -172,6 +173,50 @@ const normalSetItem=context.localStorage.setItem;
 context.localStorage.setItem=()=>{throw Error('storage unavailable');};
 assert.doesNotThrow(()=>get('themeLight').onclick());assert.equal(context.document.documentElement.dataset.theme,'light');
 context.localStorage.setItem=normalSetItem;get('themeLight').onclick();assert.equal(storage.get('flow-maker-theme-v1'),'light');
+
+// Manual prototype: v1 import, structured text, linked names, ordering and round-trip.
+api.load(initial,false);get('tabManual').onclick();assert.equal(api.dirty,false);get('manualStart').onclick();
+assert.equal(api.model.version,2);assert.equal(api.model.manual.entries.length,initial.nodes.filter(n=>['task','decision'].includes(n.type)).length+1);
+assert.doesNotThrow(()=>context.FlowManual.validate(api.model.manual));
+const selectManual=id=>fire('manualView','click',{closest:selector=>selector==='[data-entry]'?{dataset:{entry:id}}:null});
+const manualField=(key,value)=>{
+ const target={matches:()=>true,dataset:{manualField:key},value};
+ fire('manualView','focusin',target);fire('manualView','input',target);fire('manualView','change',target);
+};
+let intro=api.model.manual.entries[0];selectManual(intro.id);manualField('body','<script>alert(1)</script>\n初任者向けの説明');
+let procedure=api.model.manual.entries.find(e=>e.nodeId===api.model.nodes[1].id);const procedureId=procedure.id;
+selectManual(procedureId);const formBeforeInput=get('manualEditor').innerHTML;manualField('steps','資料を確認する\n結果を記録する');
+assert.equal(get('manualEditor').innerHTML,formBeforeInput,'Committing input must not replace pending navigation targets');
+assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).fields.steps,'資料を確認する\n結果を記録する');
+get('undoBtn').onclick();assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).fields.steps,'');
+get('redoBtn').onclick();assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).fields.steps,'資料を確認する\n結果を記録する');
+api.model.nodes[1].label='受付名称の変更';
+const manualHtml=context.FlowManual.html(api.model,api.svgMarkup(false));
+assert(manualHtml.includes('受付名称の変更'));assert(manualHtml.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+assert(!manualHtml.includes('<script>'));assert(!manualHtml.includes('data-manual-edit'));assert(manualHtml.includes('id="manual-arrow"'));
+get('tabPreview').onclick();assert.equal(get('manualPreview').hidden,false);assert(get('manualPreviewBody').innerHTML.includes('id="preview-arrow"'));
+const previewBeforeDelete=JSON.stringify(api.model);events.get('document:keydown')({target:{matches:()=>false},key:'Delete',preventDefault(){}});assert.equal(JSON.stringify(api.model),previewBeforeDelete);
+get('manualDownload').onclick();assert.equal(downloads.at(-1).type,'text/html;charset=utf-8');
+get('tabFlow').onclick();api.select('node',api.model.nodes[1].id);action('delete');
+procedure=api.model.manual.entries.find(e=>e.id===procedureId);assert(procedure);assert(procedure.fields.steps.includes('資料を確認'));
+assert(context.FlowManual.issues(api.model,procedure).some(text=>text.includes('削除されています')));
+get('undoBtn').onclick();assert(api.model.nodes.some(n=>n.id===procedure.nodeId));
+const manualSaved=JSON.parse(JSON.stringify(api.model));api.load(manualSaved,false);assert.equal(api.model.version,2);assert.equal(api.dirty,false);
+const invalidManual=JSON.parse(JSON.stringify(manualSaved));invalidManual.manual.chapters[1].id=invalidManual.manual.chapters[0].id;
+const beforeInvalid=JSON.stringify(api.model);assert.throws(()=>api.load(invalidManual,false));assert.equal(JSON.stringify(api.model),beforeInvalid);
+get('tabManual').onclick();get('manualAddChapter').onclick();const addedChapter=api.model.manual.chapters.at(-1);
+get('manualAddText').onclick();assert.equal(api.model.manual.entries.at(-1).chapterId,addedChapter.id);
+assert.equal(new Set(api.model.manual.entries.map(e=>e.id)).size,api.model.manual.entries.length);
+assert.doesNotThrow(()=>api.validate(api.model));
+const chapterSelect=id=>fire('manualView','click',{closest:selector=>selector==='[data-chapter]'?{dataset:{chapter:id}}:null});
+const manualAction=name=>fire('manualView','click',{closest:selector=>selector==='[data-manual-action]'?{dataset:{manualAction:name}}:null});
+chapterSelect(addedChapter.id);manualAction('chapterUp');assert.equal(api.model.manual.chapters[1].id,addedChapter.id);
+get('undoBtn').onclick();assert.equal(api.model.manual.chapters.at(-1).id,addedChapter.id);
+const retainedEntry=api.model.manual.entries.at(-1).id;chapterSelect(addedChapter.id);manualAction('deleteChapter');
+assert(api.model.manual.entries.some(e=>e.id===retainedEntry));assert(!api.model.manual.chapters.some(c=>c.id===addedChapter.id));
+assert.doesNotThrow(()=>api.validate(api.model));
+if(process.env.FLOW_QA_MANUAL)fs.writeFileSync(process.env.FLOW_QA_MANUAL,context.FlowManual.html(api.model,api.svgMarkup(false)));
+api.load(initial,false);assert.equal(api.model.version,1);assert.equal(api.model.manual,undefined);get('tabFlow').onclick();
 
 (async () => {
  // PNG output uses a single snapshot of page dimensions/content while image loading is pending.
@@ -188,5 +233,5 @@ context.localStorage.setItem=normalSetItem;get('themeLight').onclick();assert.eq
   assert.equal(get('pngBtn').disabled,false);assert.match(get('toast').textContent,/失敗/);
  }
  downloadFails=false;emptyPng=false;assert.equal(exportErrors.length,2);
- console.log('PASS: editing, recovery, JSON, export, drag, history, PNG failures and theme persistence/isolation.');
+ console.log('PASS: flow regression plus manual creation, editing/history, navigation, safe HTML, linked names, JSON and retained procedures.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
