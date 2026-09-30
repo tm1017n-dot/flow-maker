@@ -3,6 +3,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const K = 'flow-maker-recovery-v1';
+  const THEME_KEY = 'flow-maker-theme-v1';
   const TYPES = {start:'開始・終了',task:'作業',decision:'判断',document:'帳票',system:'システム'};
   const SIZES = {start:[126,54],task:[172,76],decision:[148,94],document:[144,67],system:[144,67]};
   const COLORS = {start:['#dcf8ee','#2dbb92'],task:['#e8efff','#6687e8'],decision:['#fff3d9','#e5ad41'],document:['#f3eaff','#ae83df'],system:['#e3f5fa','#60b5c9']};
@@ -29,6 +30,23 @@
     const edge=(a,b,label='')=>({id:uid(),from:nodes[a].id,to:nodes[b].id,label});
     return {version:1,id:uid(),title:'申請受付の業務フロー',lanes,nodes,edges:[edge(0,1),edge(1,2),edge(2,3,'あり'),edge(2,4,'なし'),edge(3,1,'再提出'),edge(4,5),edge(5,6)],associations:[{id:uid(),artifact:nodes[7].id,task:nodes[1].id},{id:uid(),artifact:nodes[8].id,task:nodes[4].id}]};
   };
+  // Appearance is a browser preference, independent of the diagram and undo history.
+  function setTheme(theme, persist = true) {
+    const next = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    $('themeLight').setAttribute('aria-pressed', String(next === 'light'));
+    $('themeDark').setAttribute('aria-pressed', String(next === 'dark'));
+    if (persist) {
+      try { localStorage.setItem(THEME_KEY, next); } catch { /* The switch still works without browser storage. */ }
+    }
+  }
+
+  function restoreTheme() {
+    let saved;
+    try { saved = localStorage.getItem(THEME_KEY); } catch { /* Use light mode when storage is unavailable. */ }
+    setTheme(saved, false);
+  }
+
   function laneCenterFromIndex(i){return 54+i*260+120;}
   function empty(){const l={id:uid(),name:'担当者'};return {version:1,id:uid(),title:'新しい業務フロー',lanes:[l],nodes:[],edges:[],associations:[]};}
   function notify(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
@@ -84,7 +102,7 @@
     return ['exportDialog', 'diagnosticsDialog', 'helpDialog'].some(id => $(id).open);
   }
 
-  function status(){dirty=savedSnapshot===null||JSON.stringify(model)!==savedSnapshot;$('saveStatus').textContent=dirty?'未保存の変更があります':lastDownloadAt?`保存用ファイルのダウンロードを開始 · ${lastDownloadAt.toLocaleTimeString('ja-JP')}`:'読み込んだ状態から変更なし';$('saveStatus').style.color=dirty?'#c48b45':'#2f9b7b';}
+  function status(){dirty=savedSnapshot===null||JSON.stringify(model)!==savedSnapshot;$('saveStatus').textContent=dirty?'未保存の変更があります':lastDownloadAt?`保存用ファイルのダウンロードを開始 · ${lastDownloadAt.toLocaleTimeString('ja-JP')}`:'読み込んだ状態から変更なし';$('saveStatus').dataset.state=dirty?'dirty':'clean';}
   function load(next, isDirty = false) {
     // Validate first: a rejected file must leave both the diagram and editing mode intact.
     const validated = validate(clone(next));
@@ -144,11 +162,11 @@
   }
   function nodeSvg(n, interactive){
     const {w,h,size,available}=nodeGeometry(n),x=n.x-w/2,y=n.y-h/2,[fill,stroke]=COLORS[n.type],sel=interactive&&(selected?.kind==='node'&&selected.id===n.id||multiSelection.has(n.id));
-    const group=interactive?`data-node="${esc(n.id)}" style="cursor:grab"`:'';
+    const group=interactive?`class="diagram-node node-${n.type}" data-selected="${sel}" data-node="${esc(n.id)}" style="cursor:grab"`:'';
     const candidate=interactive&&connecting&&n.id!==connecting.from&&isFlow(n);
     let shape='';
-    if(n.type==='decision')shape=`<path d="M ${n.x} ${y} L ${x+w} ${n.y} L ${n.x} ${y+h} L ${x} ${n.y} Z" fill="${fill}" stroke="${sel?'#5e55df':stroke}" stroke-width="${sel?3:1.6}"/>`;
-    else shape=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${n.type==='start'?Math.min(27,h/2):n.type==='task'?12:8}" fill="${fill}" stroke="${sel?'#5e55df':stroke}" stroke-width="${sel?3:1.5}"/>`;
+    if(n.type==='decision')shape=`<path class="node-shape" d="M ${n.x} ${y} L ${x+w} ${n.y} L ${n.x} ${y+h} L ${x} ${n.y} Z" fill="${fill}" stroke="${sel?'#5e55df':stroke}" stroke-width="${sel?3:1.6}"/>`;
+    else shape=`<rect class="node-shape" x="${x}" y="${y}" width="${w}" height="${h}" rx="${n.type==='start'?Math.min(27,h/2):n.type==='task'?12:8}" fill="${fill}" stroke="${sel?'#5e55df':stroke}" stroke-width="${sel?3:1.5}"/>`;
     const icon=n.type==='document'?'▤':n.type==='system'?'▧':'';
     return `<g ${group}>${sel?`<rect data-selection="true" x="${x-6}" y="${y-6}" width="${w+12}" height="${h+12}" rx="16" fill="none" stroke="#958cfa" stroke-width="1" stroke-dasharray="4 4"/>`:''}${candidate?`<rect x="${x-5}" y="${y-5}" width="${w+10}" height="${h+10}" rx="14" fill="none" stroke="#41bba0" stroke-dasharray="3 4"/>`:''}${shape}${icon?`<text x="${x+15}" y="${y+23}" font-size="17" fill="${stroke}">${icon}</text>`:''}${textSvg(n.label,n.x,n.y+(icon?9:0),available,size)}</g>`;
   }
@@ -181,9 +199,9 @@
   function svgMarkup(interactive=true){
     const W=width(),H=height(),headingHeight=laneHeadingHeight();
     const laneMarkup=model.lanes.map((l,i)=>`<g ${interactive?`data-lane="${esc(l.id)}"`:''}><rect x="${laneX(i)}" y="65" width="240" height="${H-111}" rx="14" fill="${i%2?'#f8faff':'#f5f7fc'}" stroke="#e4e9f3"/><rect x="${laneX(i)}" y="65" width="240" height="${headingHeight}" rx="13" fill="${i%2?'#eaeefa':'#e5eaf8'}"/><rect x="${laneX(i)}" y="${65+headingHeight-12}" width="240" height="12" fill="${i%2?'#eaeefa':'#e5eaf8'}"/><circle cx="${laneX(i)+19}" cy="92" r="4" fill="#7065df"/>${textSvg(l.name,laneX(i)+120,65+headingHeight/2,174,13,'#344264')}<text x="${laneX(i)+214}" y="97" font-size="10" text-anchor="end" fill="#9ca8c3">${String(i+1).padStart(2,'0')}</text></g>`).join('');
-    const edges=model.edges.map(e=>{const a=getNode(e.from),b=getNode(e.to);if(!a||!b)return '';const p=edgePath(a,b,e),sel=interactive&&selected?.kind==='edge'&&selected.id===e.id;const lines=wrapText(e.label,180,11),lw=Math.max(50,...lines.map(line=>textWidth(line,11)+22)),lh=lines.length*15.4+10;return `<g ${interactive?`data-edge="${esc(e.id)}" style="cursor:pointer"`:''}><path d="${p.d}" fill="none" stroke="${sel?'#675be7':'#8a98b5'}" stroke-width="${sel?3:2}" marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path ${interactive?`data-route-handle="${esc(e.id)}" style="cursor:grab"`: ''} d="${p.d}" fill="none" stroke="transparent" stroke-width="${interactive?Math.max(17,14/zoom):17}"/>${e.label?`<g ${interactive?`data-label-handle="${esc(e.id)}" style="cursor:move"`:''}><rect x="${p.lx-lw/2}" y="${p.ly-lh/2}" width="${lw}" height="${lh}" rx="7" fill="white" stroke="#dfe4ee"/>${textSvg(e.label,p.lx,p.ly,180,11,'#53617f')}</g>`:''}${sel&&!e.label?`<circle data-bend-handle="${esc(e.id)}" cx="${p.hx}" cy="${p.hy}" r="${7/zoom}" fill="#fff" stroke="#675be7" stroke-width="${2/zoom}" style="cursor:${p.axis==='x'?'ew':'ns'}-resize"/>`:''}</g>`;}).join('');
+    const edges=model.edges.map(e=>{const a=getNode(e.from),b=getNode(e.to);if(!a||!b)return '';const p=edgePath(a,b,e),sel=interactive&&selected?.kind==='edge'&&selected.id===e.id;const lines=wrapText(e.label,180,11),lw=Math.max(50,...lines.map(line=>textWidth(line,11)+22)),lh=lines.length*15.4+10;return `<g ${interactive?`data-edge="${esc(e.id)}" data-selected="${sel}" style="cursor:pointer"`:''}><path d="${p.d}" fill="none" stroke="${sel?'#675be7':'#8a98b5'}" stroke-width="${sel?3:2}" marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path ${interactive?`data-route-handle="${esc(e.id)}" style="cursor:grab"`: ''} d="${p.d}" fill="none" stroke="transparent" stroke-width="${interactive?Math.max(17,14/zoom):17}"/>${e.label?`<g ${interactive?`data-label-handle="${esc(e.id)}" style="cursor:move"`:''}><rect x="${p.lx-lw/2}" y="${p.ly-lh/2}" width="${lw}" height="${lh}" rx="7" fill="white" stroke="#dfe4ee"/>${textSvg(e.label,p.lx,p.ly,180,11,'#53617f')}</g>`:''}${sel&&!e.label?`<circle data-bend-handle="${esc(e.id)}" cx="${p.hx}" cy="${p.hy}" r="${7/zoom}" fill="#fff" stroke="#675be7" stroke-width="${2/zoom}" style="cursor:${p.axis==='x'?'ew':'ns'}-resize"/>`:''}</g>`;}).join('');
     const assoc=model.associations.map(a=>{const n=getNode(a.artifact),t=getNode(a.task);if(!n||!t)return '';return `<g ${interactive?`data-association="${esc(a.id)}" style="cursor:pointer"`:''}><line x1="${n.x}" y1="${n.y}" x2="${t.x}" y2="${t.y}" stroke="${interactive&&selected?.kind==='association'&&selected.id===a.id?'#675be7':'#b6a6d1'}" stroke-width="2" stroke-dasharray="5 5"/><line x1="${n.x}" y1="${n.y}" x2="${t.x}" y2="${t.y}" stroke="transparent" stroke-width="15"/></g>`;}).join('');
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M 0 0 L 9 4.5 L 0 9 z" fill="#8a98b5"/></marker></defs><rect width="${W}" height="${H}" fill="white"/>${textSvg(model.title,W/2,32,W-110,16,'#26334e')}${laneMarkup}${assoc}${edges}${model.nodes.map(n=>nodeSvg(n,interactive)).join('')}${interactive?editingOverlay():''}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M 0 0 L 9 4.5 L 0 9 z" fill="#8a98b5"/></marker></defs><rect class="canvas-paper" width="${W}" height="${H}" fill="white"/>${textSvg(model.title,W/2,32,W-110,16,'#26334e')}${laneMarkup}${assoc}${edges}${model.nodes.map(n=>nodeSvg(n,interactive)).join('')}${interactive?editingOverlay():''}</svg>`;
   }
   function editingOverlay(){
     let svg=guides.map(g=>g.axis==='x'?`<line x1="${g.value}" x2="${g.value}" y1="130" y2="${height()-20}" stroke="#e56db4" stroke-dasharray="4 4"/>`:`<line x1="30" x2="${width()-30}" y1="${g.value}" y2="${g.value}" stroke="#e56db4" stroke-dasharray="4 4"/>`).join('');
@@ -493,6 +511,8 @@
   $('placeBtn').onclick=()=>{suppressClick=false;placing=!placing;cancelConnection();insertionPoint=null;render();};
   $('snapBtn').onclick=()=>{snapEnabled=!snapEnabled;$('snapBtn').setAttribute('aria-pressed',String(snapEnabled));$('snapBtn').textContent=`位置合わせ ${snapEnabled?'ON':'OFF'}`;};
   $('checkBtn').onclick=showDiagnostics;
+  $('themeLight').onclick = () => setTheme('light');
+  $('themeDark').onclick = () => setTheme('dark');
   $('toggleSidebar').onclick = () => togglePanel('sidebar');
   $('toggleInspector').onclick = () => togglePanel('inspector');
   $('diagnosticsList').addEventListener('click', event => {
@@ -522,5 +542,6 @@
     if (key === 'delete' && !editable) { event.preventDefault(); deleteSelected(); }
   });
   window.addEventListener('beforeunload',e=>{if(dirty){clearTimeout(saveTimer);writeRecovery();e.preventDefault();e.returnValue='';}});
+  restoreTheme();
   try{const draft=JSON.parse(localStorage.getItem(K));if(draft?.model){validate(draft.model);const when=new Date(draft.at).toLocaleString('ja-JP');if(confirm(`一時保存された「${draft.model.title}」（${when}）があります。復旧しますか？`)){load(draft.model,true);notify('一時保存から復旧しました。編集用ファイルも保存してください。');}else{clearRecovery();load(sample(),true);}}else load(sample(),true);}catch{clearRecovery();load(sample(),true);}
 })();
