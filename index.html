@@ -3,16 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Flow Maker — 業務の流れを、ひと目で。</title>
+  <title>Flow Maker — 業務フロー図</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar" id="shapePanel">
-      <div class="brand"><span class="brand-icon">↗</span><span>flow<span class="brand-light">maker</span><small>WORKFLOW STUDIO</small></span></div>
-      <div class="sidebar-label">ワークスペース</div>
-      <button class="nav active" type="button"><span>▦</span> フローエディター <span class="nav-dot"></span></button>
-      <div class="sidebar-label second">図形を追加</div>
+      <div class="brand"><span class="brand-icon">↗</span><span>flow<span class="brand-light">maker</span></span></div>
+      <div class="sidebar-label">図形を追加</div>
       <div class="palette" id="palette">
         <button type="button" data-add="start"><span class="palette-icon start">●</span><span>開始・終了<small>フローの入口と出口</small></span><b>＋</b></button>
         <button type="button" data-add="task"><span class="palette-icon task">▣</span><span>作業<small>担当者が行う処理</small></span><b>＋</b></button>
@@ -21,12 +19,13 @@
         <button type="button" data-add="system"><span class="palette-icon system">▧</span><span>システム<small>利用するシステム</small></span><b>＋</b></button>
       </div>
       <button type="button" class="add-lane" id="addLane">＋ 担当レーンを追加</button>
-      <div class="sidebar-bottom"><span class="online-dot"></span> オフラインで利用できます <small>データはこのPCに保存されます</small></div>
+      <button type="button" class="sample-button" id="sampleBtn">サンプルを読み込む</button>
+      <div class="sidebar-bottom"><span class="online-dot"></span> オフラインで利用できます <small>編集中はブラウザ内に一時保存</small></div>
     </aside>
 
     <main class="workspace">
       <header class="topbar">
-        <div class="title-wrap"><div class="eyebrow">WORKFLOW / EDITOR <span>・ PROTOTYPE</span></div><input id="flowTitle" aria-label="図の名前" maxlength="200" value="申請受付の業務フロー"><div class="save-status" id="saveStatus">未保存の変更があります</div></div>
+        <div class="title-wrap"><label class="title-label" for="flowTitle">図の名前</label><input id="flowTitle" aria-label="図の名前" maxlength="200" value="申請受付の業務フロー"><div class="save-status" id="saveStatus">未保存の変更があります</div></div>
         <div class="top-actions">
           <button type="button" class="icon-button" id="undoBtn" title="元に戻す (Ctrl+Z)" aria-label="元に戻す">↶</button>
           <button type="button" class="icon-button" id="redoBtn" title="やり直す (Ctrl+Y)" aria-label="やり直す">↷</button>
@@ -37,7 +36,6 @@
           <button type="button" class="primary" id="exportBtn">↗ 出力する</button>
         </div>
       </header>
-      <section class="intro-bar"><div><span class="step-pill">EDITING</span><strong>担当ごとの流れを、ひとつの図に。</strong><span id="hint">図形を選んで、右側で内容を編集できます。</span></div><button type="button" id="sampleBtn">サンプルを読み込む ↗</button></section>
       <div class="editor-layout">
         <div class="canvas-section">
           <div class="canvas-toolbar">
@@ -56,18 +54,18 @@
             </div>
           </div>
           <div class="mode-toolbar"><div><button type="button" id="placeBtn" aria-pressed="false">＋ 配置位置を指定</button><button type="button" id="snapBtn" aria-pressed="true">位置合わせ ON</button></div><div><button type="button" id="checkBtn">点検 <span id="issueCount"></span></button><button type="button" id="helpBtn">操作ガイド</button></div></div><div class="canvas-scroll" id="canvasScroll"><div class="canvas-inner" id="canvasInner"><svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="業務フロー図"></svg></div></div>
-          <div class="canvas-footer"><span>Shift＋クリックで複数選択 ・ ドラッグで移動</span><span id="footerMeta"></span></div>
+          <div class="canvas-footer"><span id="hint" role="status" aria-live="polite">図形をドラッグして移動できます。</span><span id="footerMeta"></span></div>
         </div>
-        <aside class="inspector" id="propertyPanel"><div class="inspector-head"><span>プロパティ</span><span class="inspector-badge">INSPECTOR</span></div><div id="inspectorBody"></div></aside>
+        <aside class="inspector" id="propertyPanel"><div class="inspector-head"><span>プロパティ</span></div><div id="inspectorBody"></div></aside>
       </div>
     </main>
   </div>
 
   <input id="fileInput" type="file" accept=".json,application/json" hidden>
   <div id="toast" role="status" aria-live="polite"></div>
-  <dialog id="exportDialog" class="modal"><form method="dialog"><div class="modal-head"><div class="eyebrow">EXPORT WORKFLOW</div><h2>図を書き出す</h2><p>資料に貼り付けやすい形式で保存します。</p></div><label>用紙サイズ<select id="paperSize"><option value="a4">A4 横</option><option value="a3">A3 横</option></select></label><div class="property-grid"><div><label for="pageMargin">余白（mm）</label><input id="pageMargin" type="number" min="0" max="30" value="10"></div><div><label for="pngDpi">PNG解像度</label><select id="pngDpi"><option value="150">150 dpi</option><option value="300">300 dpi</option></select></div></div><div class="export-preview" id="exportPreview"></div><p class="export-warning" id="exportWarning"></p><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button><button type="button" id="pngBtn" class="secondary">PNGを保存</button><button type="button" id="pdfBtn" class="primary">PDFを印刷・保存</button></div></form></dialog>
-  <dialog id="diagnosticsDialog" class="modal"><form method="dialog"><div class="modal-head"><div class="eyebrow">WORKFLOW CHECK</div><h2>図全体を点検</h2><p>警告は編集を止めません。業務上必要な表現か確認してください。</p></div><div id="diagnosticsList"></div><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button></div></form></dialog>
-  <dialog id="helpDialog" class="modal"><form method="dialog"><div class="modal-head"><div class="eyebrow">QUICK GUIDE</div><h2>画面上で、直接編集。</h2></div><ol class="quick-guide"><li><strong>図形を置く</strong><p>担当レーンを選んで図形パネルの種類をクリック。「配置位置を指定」で場所を先に決めることもできます。</p></li><li><strong>作業をつなぐ</strong><p>図形を選んで「つなぐ」を押し、次の図形をクリックします。Escでキャンセルできます。</p></li><li><strong>矢印を調整</strong><p>線をドラッグして経路を移動。両端の丸は図形の周囲へ、条件ラベルは好きな位置へドラッグできます。</p></li><li><strong>画面を移動・整列</strong><p>空白をドラッグすると画面が動きます。Shift＋クリックで複数選択し、編集パネルで整列できます。</p></li><li><strong>表示を調整</strong><p>「図の倍率」で図だけを拡大・縮小し、「全体表示」で作図領域に収めます。ブラウザを拡大すると編集パネルは下段へ移り、狭い画面では図形パネルが上段へ移ります。パネル内に収まらない項目はスクロールして選べます。</p></li></ol><div class="modal-actions"><button value="cancel" class="primary">編集に戻る</button></div></form></dialog>
+  <dialog id="exportDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>図を書き出す</h2><p>PNG画像、または印刷画面からPDFとして保存します。</p></div><label>用紙サイズ<select id="paperSize"><option value="a4">A4 横</option><option value="a3">A3 横</option></select></label><div class="property-grid"><div><label for="pageMargin">余白（mm）</label><input id="pageMargin" type="number" min="0" max="30" value="10"></div><div><label for="pngDpi">PNG解像度</label><select id="pngDpi"><option value="150">150 dpi</option><option value="300">300 dpi</option></select></div></div><div class="export-preview" id="exportPreview"></div><p class="export-warning" id="exportWarning"></p><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button><button type="button" id="pngBtn" class="secondary">PNGを保存</button><button type="button" id="pdfBtn" class="primary">PDFを印刷・保存</button></div></form></dialog>
+  <dialog id="diagnosticsDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>図全体を点検</h2><p>警告は編集を止めません。業務上必要な表現か確認してください。</p></div><div id="diagnosticsList"></div><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button></div></form></dialog>
+  <dialog id="helpDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>操作ガイド</h2></div><ol class="quick-guide"><li><strong>図形を置く</strong><p>担当レーンを選んで図形パネルの種類をクリック。「配置位置を指定」で場所を先に決めることもできます。</p></li><li><strong>作業をつなぐ</strong><p>図形を選んで「つなぐ」を押し、次の図形をクリックします。Escでキャンセルできます。</p></li><li><strong>矢印を調整</strong><p>線をドラッグして経路を移動。両端の丸は図形の周囲へ、条件ラベルは好きな位置へドラッグできます。</p></li><li><strong>画面を移動・整列</strong><p>空白をドラッグすると画面が動きます。Shift＋クリックで複数選択し、編集パネルで整列できます。</p></li><li><strong>表示を調整</strong><p>「図の倍率」で図だけを拡大・縮小し、「全体表示」で作図領域に収めます。ブラウザを拡大すると編集パネルは下段へ移り、狭い画面では図形パネルが上段へ移ります。作図領域を広げたい場合は「図形を隠す」「編集を隠す」を使います。パネル内に収まらない項目はスクロールして選べます。</p></li></ol><div class="modal-actions"><button value="cancel" class="primary">編集に戻る</button></div></form></dialog>
   <div id="printArea" aria-hidden="true"></div>
   <script src="app.js"></script>
 </body>
