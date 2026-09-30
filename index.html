@@ -27,7 +27,7 @@
     <main class="workspace">
       <header class="topbar">
         <div class="title-wrap"><div class="eyebrow">WORKFLOW / EDITOR <span>・ PROTOTYPE</span></div><input id="flowTitle" aria-label="図の名前" maxlength="200" value="申請受付の業務フロー"><div class="save-status" id="saveStatus">未保存の変更があります</div></div>
-        <div class="top-actions">
+        <div class="top-actions"><button type="button" class="secondary" id="toggleSidebar" aria-pressed="false">図形パネル</button><button type="button" class="secondary" id="toggleInspector" aria-pressed="false">編集パネル</button>
           <button type="button" class="icon-button" id="undoBtn" title="元に戻す (Ctrl+Z)" aria-label="元に戻す">↶</button>
           <button type="button" class="icon-button" id="redoBtn" title="やり直す (Ctrl+Y)" aria-label="やり直す">↷</button>
           <span class="divider"></span>
@@ -40,9 +40,9 @@
       <section class="intro-bar"><div><span class="step-pill">EDITING</span><strong>担当ごとの流れを、ひとつの図に。</strong><span id="hint">図形を選んで、右側で内容を編集できます。</span></div><button type="button" id="sampleBtn">サンプルを読み込む ↗</button></section>
       <div class="editor-layout">
         <div class="canvas-section">
-          <div class="canvas-toolbar"><div class="toolbar-label"><span class="mini-grid">▦</span> キャンバス <span class="toolbar-count" id="counts"></span></div><div class="toolbar-controls"><button type="button" id="zoomOut" aria-label="縮小">−</button><span id="zoomLabel">100%</span><button type="button" id="zoomIn" aria-label="拡大">＋</button><span class="divider"></span><button type="button" id="fitBtn">全体表示</button></div></div>
+          <div class="canvas-toolbar"><div class="toolbar-label"><span class="mini-grid">▦</span> キャンバス <span class="toolbar-count" id="counts"></span></div><div class="toolbar-controls"><button type="button" id="zoomOut" aria-label="縮小">−</button><span id="zoomLabel">100%</span><button type="button" id="zoomIn" aria-label="拡大">＋</button><span class="divider"></span><button type="button" id="placeBtn" aria-pressed="false">配置位置を指定</button><button type="button" id="snapBtn" aria-pressed="true">位置合わせ ON</button><button type="button" id="checkBtn">点検 <span id="issueCount"></span></button><button type="button" id="fitBtn">全体表示</button></div></div>
           <div class="canvas-scroll" id="canvasScroll"><div class="canvas-inner" id="canvasInner"><svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="業務フロー図"></svg></div></div>
-          <div class="canvas-footer"><span>クリックで選択 ・ ドラッグで移動 ・ 「つなぐ」で接続</span><span id="footerMeta"></span></div>
+          <div class="canvas-footer"><span>Shift＋クリックで複数選択 ・ ドラッグで移動</span><span id="footerMeta"></span></div>
         </div>
         <aside class="inspector"><div class="inspector-head"><span>プロパティ</span><span class="inspector-badge">INSPECTOR</span></div><div id="inspectorBody"></div></aside>
       </div>
@@ -51,7 +51,8 @@
 
   <input id="fileInput" type="file" accept=".json,application/json" hidden>
   <div id="toast" role="status" aria-live="polite"></div>
-  <dialog id="exportDialog" class="modal"><form method="dialog"><div class="modal-head"><div class="eyebrow">EXPORT WORKFLOW</div><h2>図を書き出す</h2><p>資料に貼り付けやすい形式で保存します。</p></div><label>用紙サイズ<select id="paperSize"><option value="a4">A4 横</option><option value="a3">A3 横</option></select></label><div class="export-preview" id="exportPreview"></div><p class="export-warning" id="exportWarning"></p><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button><button type="button" id="pngBtn" class="secondary">PNGを保存</button><button type="button" id="pdfBtn" class="primary">PDFを印刷・保存</button></div></form></dialog>
+  <dialog id="exportDialog" class="modal"><form method="dialog"><div class="modal-head"><div class="eyebrow">EXPORT WORKFLOW</div><h2>図を書き出す</h2><p>資料に貼り付けやすい形式で保存します。</p></div><label>用紙サイズ<select id="paperSize"><option value="a4">A4 横</option><option value="a3">A3 横</option></select></label><div class="property-grid"><div><label for="pageMargin">余白（mm）</label><input id="pageMargin" type="number" min="0" max="30" value="10"></div><div><label for="pngDpi">PNG解像度</label><select id="pngDpi"><option value="150">150 dpi</option><option value="300">300 dpi</option></select></div></div><div class="export-preview" id="exportPreview"></div><p class="export-warning" id="exportWarning"></p><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button><button type="button" id="pngBtn" class="secondary">PNGを保存</button><button type="button" id="pdfBtn" class="primary">PDFを印刷・保存</button></div></form></dialog>
+  <dialog id="diagnosticsDialog" class="modal"><form method="dialog"><div class="modal-head"><div class="eyebrow">WORKFLOW CHECK</div><h2>図全体を点検</h2><p>警告は編集を止めません。業務上必要な表現か確認してください。</p></div><div id="diagnosticsList"></div><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button></div></form></dialog>
   <div id="printArea" aria-hidden="true"></div>
   <script src="app.js"></script>
 </body>
