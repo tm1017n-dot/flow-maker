@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Flow Maker — 業務フロー図</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="manual.css">
 </head>
 <body>
-  <div class="app">
+  <div class="app" data-view="flow">
     <aside class="sidebar" id="shapePanel">
       <div class="brand"><span class="brand-icon">↗</span><span>flow<span class="brand-light">maker</span></span></div>
       <div class="sidebar-label">図形を追加</div>
@@ -37,10 +38,16 @@
           <button type="button" class="secondary" id="newBtn">新規</button>
           <button type="button" class="secondary" id="openBtn">開く</button>
           <button type="button" class="secondary" id="saveBtn">保存</button>
-          <button type="button" class="primary" id="exportBtn">↗ 出力する</button>
+          <button type="button" class="primary" id="exportBtn">↗ 図を出力</button>
         </div>
       </header>
-      <div class="editor-layout">
+      <nav class="workspace-tabs" id="workspaceTabs" role="tablist" aria-label="編集画面">
+        <button type="button" id="tabFlow" role="tab" aria-selected="true" aria-controls="flowView">フロー</button>
+        <button type="button" id="tabManual" role="tab" aria-selected="false" aria-controls="manualView" tabindex="-1">手順</button>
+        <button type="button" id="tabPreview" role="tab" aria-selected="false" aria-controls="manualPreview" tabindex="-1">プレビュー</button>
+        <span class="tabs-note">マニュアル試作版</span>
+      </nav>
+      <div class="editor-layout" id="flowView" role="tabpanel" aria-labelledby="tabFlow">
         <div class="canvas-section">
           <div class="canvas-toolbar">
             <div class="toolbar-label"><span class="mini-grid">▦</span> キャンバス <span class="toolbar-count" id="counts"></span></div>
@@ -62,6 +69,14 @@
         </div>
         <aside class="inspector" id="propertyPanel"><div class="inspector-head"><span>プロパティ</span></div><div id="inspectorBody"></div></aside>
       </div>
+      <section class="manual-view" id="manualView" role="tabpanel" aria-labelledby="tabManual" hidden>
+        <div class="manual-empty" id="manualSetup"><h2>フローから、手順書を作成します。</h2><p>作業・判断を手順の項目として取り込みます。章の順番や掲載する項目は後から変更できます。</p><p>作業名・担当・分岐条件は図と連動します。本文は広い編集欄で入力できます。</p><div class="setup-actions"><button class="primary" type="button" id="manualStart">このフローから作成</button><button class="secondary" type="button" id="manualDemo">入力例付きで試す</button></div></div>
+        <div class="manual-workbench" id="manualWorkbench" hidden>
+          <aside class="manual-outline-panel"><div class="manual-outline-head"><h2>章と手順</h2><p id="manualSummary"></p></div><input class="manual-search" id="manualSearch" type="search" placeholder="見出し・本文を検索" aria-label="手順を検索"><div class="manual-outline-actions"><button class="secondary" type="button" id="manualAddChapter">＋ 章を追加</button><button class="secondary" type="button" id="manualAddText">＋ 説明を追加</button><button class="secondary" type="button" id="manualSync" title="フローに新しく追加した作業・判断を取り込みます">図の作業を取り込む</button></div><div id="manualOutline"></div><details class="manual-settings"><summary>文書の基本情報</summary><label class="manual-field">所管部署<input id="manualDepartment" data-manual-meta="department" maxlength="100"></label><label class="manual-field">文書の版<input id="manualRevision" data-manual-meta="revision" maxlength="50"></label></details></aside>
+          <section class="manual-editor" id="manualEditor" aria-label="手順の編集"></section>
+        </div>
+      </section>
+      <section class="manual-preview" id="manualPreview" role="tabpanel" aria-labelledby="tabPreview" hidden><div class="manual-preview-head"><div><h2>マニュアルのプレビュー</h2><p>目次・全体図・手順をまとめて確認できます。出力は白背景です。</p></div><div><button class="secondary" type="button" id="manualDownload">HTMLを保存</button><button class="primary" type="button" id="manualPrint">PDFを印刷・保存</button></div></div><div class="manual-preview-body" id="manualPreviewBody"></div></section>
     </main>
   </div>
 
@@ -71,6 +86,7 @@
   <dialog id="diagnosticsDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>図全体を点検</h2><p>警告は編集を止めません。業務上必要な表現か確認してください。</p></div><div id="diagnosticsList"></div><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button></div></form></dialog>
   <dialog id="helpDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>操作ガイド</h2></div><ol class="quick-guide"><li><strong>図形を置く</strong><p>担当レーンを選んで図形パネルの種類をクリック。「配置位置を指定」で場所を先に決めることもできます。</p></li><li><strong>作業をつなぐ</strong><p>図形を選んで「つなぐ」を押し、次の図形をクリックします。Escでキャンセルできます。</p></li><li><strong>矢印を調整</strong><p>線をドラッグして経路を移動。両端の丸は図形の周囲へ、条件ラベルは好きな位置へドラッグできます。</p></li><li><strong>画面を移動・整列</strong><p>空白をドラッグすると画面が動きます。Shift＋クリックで複数選択し、編集パネルで整列できます。</p></li><li><strong>表示を調整</strong><p>上部の「ライト」「ダーク」で表示を切り替えます。キャンバスの外側の余白でホイールを動かすと、ページをスクロールできます。「図の倍率」で図だけを拡大・縮小し、「全体表示」で作図領域に収めます。ブラウザを拡大すると編集パネルは下段へ移り、狭い画面では図形パネルが上段へ移ります。作図領域を広げたい場合は「図形を隠す」「編集を隠す」を使います。パネル内に収まらない項目はスクロールして選べます。</p></li></ol><div class="modal-actions"><button value="cancel" class="primary">編集に戻る</button></div></form></dialog>
   <div id="printArea" aria-hidden="true"></div>
+  <script src="manual.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
