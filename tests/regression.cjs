@@ -21,7 +21,7 @@ class Element {
 const get=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
 const context={console:{...console,error(error){exportErrors.push(error);}},Blob,Date,Math,JSON,Map,Set,Object,Number,Array,String,crypto:require('node:crypto').webcrypto,
   Image:class {set src(value){images.push(this);}},
-  document:{getElementById:get,querySelector:()=>get('app'),createElement(tag){const e=new Element(tag);if(tag==='a')e.click=()=>{if(downloadFails)throw Error('blocked');};if(tag==='canvas')exportCanvases.push(e);return e;},addEventListener(e,h){events.set(`document:${e}`,h);},head:{append(){}}},
+  document:{documentElement:new Element('html'),getElementById:get,querySelector:()=>get('app'),createElement(tag){const e=new Element(tag);if(tag==='a')e.click=()=>{if(downloadFails)throw Error('blocked');};if(tag==='canvas')exportCanvases.push(e);return e;},addEventListener(e,h){events.set(`document:${e}`,h);},head:{append(){}}},
   window:{addEventListener(e,h){events.set(`window:${e}`,h);}},
   localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   confirm:()=>true,URL:{createObjectURL(blob){downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
@@ -155,6 +155,24 @@ if(process.env.FLOW_QA_SVG)fs.writeFileSync(process.env.FLOW_QA_SVG,api.svgMarku
 api.load(initial,false);api.model.lanes[0].name='長い担当レーンの名称を複数行で表示する\n見出しの二行目\n見出しの三行目\n見出しの四行目';
 api.model.nodes[0].y=170;assert(api.getDiagnostics().some(issue=>issue.id===api.model.nodes[0].id && issue.message.includes('見出しに重な')));
 
+// Theme preference survives restart without modifying the diagram, history or export.
+api.load(initial,false);const themeModel=JSON.stringify(api.model),themeExport=api.pageSvg();
+get('themeDark').onclick();assert.equal(context.document.documentElement.dataset.theme,'dark');
+assert.equal(get('themeDark')['aria-pressed'],'true');assert.equal(get('themeLight')['aria-pressed'],'false');
+assert.equal(storage.get('flow-maker-theme-v1'),'dark');assert.equal(JSON.stringify(api.model),themeModel);
+assert.equal(api.dirty,false);assert.equal(get('undoBtn').disabled,true);assert.equal(api.pageSvg(),themeExport);
+const restartedElements=new Map();
+const restartedGet=id=>{if(!restartedElements.has(id))restartedElements.set(id,new Element(id));return restartedElements.get(id);};
+const restarted={...context,document:{...context.document,documentElement:new Element('restarted-html'),getElementById:restartedGet,addEventListener(){}},window:{addEventListener(){}},setTimeout:()=>0,clearTimeout(){}};
+restarted.globalThis=restarted;vm.runInNewContext(code,restarted);
+assert.equal(restarted.document.documentElement.dataset.theme,'dark');assert.equal(restartedGet('themeDark')['aria-pressed'],'true');
+// Saving a diagram clears its recovery record, without deleting the appearance preference.
+get('saveBtn').onclick();assert.equal(storage.get('flow-maker-theme-v1'),'dark');
+const normalSetItem=context.localStorage.setItem;
+context.localStorage.setItem=()=>{throw Error('storage unavailable');};
+assert.doesNotThrow(()=>get('themeLight').onclick());assert.equal(context.document.documentElement.dataset.theme,'light');
+context.localStorage.setItem=normalSetItem;get('themeLight').onclick();assert.equal(storage.get('flow-maker-theme-v1'),'light');
+
 (async () => {
  // PNG output uses a single snapshot of page dimensions/content while image loading is pending.
  api.load(initial,false);get('pngBtn').disabled=false;
@@ -170,5 +188,5 @@ api.model.nodes[0].y=170;assert(api.getDiagnostics().some(issue=>issue.id===api.
   assert.equal(get('pngBtn').disabled,false);assert.match(get('toast').textContent,/失敗/);
  }
  downloadFails=false;emptyPng=false;assert.equal(exportErrors.length,2);
- console.log('PASS: editing, recovery, JSON, export, drag, lane reflow, selection, mode resets, modal isolation and PNG snapshots/failures.');
+ console.log('PASS: editing, recovery, JSON, export, drag, history, PNG failures and theme persistence/isolation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
