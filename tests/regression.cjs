@@ -24,7 +24,7 @@ const context={console,Blob,Date,Math,JSON,Map,Set,Object,Number,Array,String,cr
 };
 context.globalThis=context;
 let code=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
-code=code.replace(/\}\)\(\);\s*$/, 'globalThis.api={load,validate,sample,select,changed,scheduleRecovery,svgMarkup,edgePath,nodeGeometry,wrapText,arrange,addNode,addLane,getDiagnostics,fitCanvas,pageSvg,pageGeometry,preview,changeExportOptions,editingOverlay,get model(){return model},get dirty(){return dirty},get selected(){return selected}};})();');
+code=code.replace(/\}\)\(\);\s*$/, 'globalThis.api={load,validate,sample,select,changed,scheduleRecovery,svgMarkup,edgePath,nodeGeometry,wrapText,arrange,addNode,addLane,getDiagnostics,fitCanvas,pageSvg,pageGeometry,preview,changeExportOptions,editingOverlay,portPoint,closestPort,nearestSegment,get model(){return model},get dirty(){return dirty},get selected(){return selected}};})();');
 vm.runInNewContext(code,context);const api=context.api;
 const flush=()=>{const pending=[...timers.values()];timers.clear();pending.forEach(fn=>fn());};
 const fire=(id,event,target)=>events.get(`${id}:${event}`)({target,...target.event});
@@ -97,5 +97,23 @@ api.load(initial,true);get('paperSize').value='a3';get('pageMargin').value='15';
 
 // 15. Missing connections, unlabeled decisions and overlapping nodes are reported.
 api.model.edges=[];api.model.nodes[4].x=api.model.nodes[1].x;api.model.nodes[4].y=api.model.nodes[1].y;const issues=api.getDiagnostics();assert(issues.some(i=>i.message.includes('分岐が2本未満')));assert(issues.some(i=>i.message.includes('重なっています')));assert(issues.some(i=>i.message.includes('入る矢印')));
-console.log('PASS: regression checks for all implemented items 1–13 and 15, including branch direction. Actual browser/Windows output checks remain separate.');
+// Direct arrow drag chooses the perpendicular axis of the grabbed segment.
+api.load(initial,false);const bodyEdge=api.model.edges[0],bodyPath=api.edgePath(api.model.nodes[0],api.model.nodes[1],bodyEdge);const bodyPoint={x:bodyPath.hx,y:bodyPath.hy};
+fire('canvas','pointerdown',{closest:sel=>sel==='[data-route-handle]'?{dataset:{routeHandle:bodyEdge.id}}:null,event:{clientX:bodyPoint.x,clientY:bodyPoint.y,pointerId:3}});
+events.get('canvas:pointermove')({clientX:bodyPoint.x,clientY:bodyPoint.y+45});events.get('canvas:pointerup')();assert.equal(api.model.edges[0].routeAxis,'y');assert.equal(api.model.edges[0].bend,bodyPoint.y+45);get('undoBtn').onclick();assert.equal(api.model.edges[0].routeAxis,undefined);
+
+// Endpoint dragging changes the side and position on the shape; undo and JSON preserve it.
+api.select('edge',api.model.edges[0].id);const target=api.model.nodes[1],endpoint=api.edgePath(api.model.nodes[0],target,api.model.edges[0]).q,ng=api.nodeGeometry(target);
+fire('canvas','pointerdown',{closest:sel=>sel==='[data-endpoint-handle]'?{dataset:{endpointHandle:api.model.edges[0].id,endpointSide:'to'}}:null,event:{clientX:endpoint.x,clientY:endpoint.y,pointerId:4}});
+events.get('canvas:pointermove')({clientX:target.x+30,clientY:target.y-ng.h/2});events.get('canvas:pointerup')();assert.equal(api.model.edges[0].toPort,'top');assert(Math.abs(api.model.edges[0].toOffset-30/(ng.w/2))<1e-8);assert(!api.svgMarkup(false).includes('data-endpoint-handle'));
+const endpointSaved=JSON.parse(JSON.stringify(api.model));api.load(endpointSaved,false);assert.equal(api.model.edges[0].toPort,'top');
+const diamondPoint=api.portPoint(api.model.nodes[2],'left',.4),dg=api.nodeGeometry(api.model.nodes[2]);assert(Math.abs(Math.abs(diamondPoint.x-api.model.nodes[2].x)/(dg.w/2)+Math.abs(diamondPoint.y-api.model.nodes[2].y)/(dg.h/2)-1)<1e-8);
+
+// Blank canvas drag pans without modifying diagram data.
+const beforePan=JSON.stringify(api.model);get('canvasScroll').scrollLeft=100;get('canvasScroll').scrollTop=80;
+fire('canvas','pointerdown',{closest:()=>null,event:{clientX:600,clientY:500,pointerId:5}});events.get('canvas:pointermove')({clientX:570,clientY:470});events.get('canvas:pointerup')();assert.equal(get('canvasScroll').scrollLeft,130);assert.equal(get('canvasScroll').scrollTop,110);assert.equal(JSON.stringify(api.model),beforePan);assert.equal(api.dirty,false);
+// Every static UI binding exists and IDs are unique (prevents missing-control startup failures).
+const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8'),idList=[...html.matchAll(/\bid="([^"\s]+)"/g)].map(m=>m[1]);assert.equal(new Set(idList).size,idList.length);for(const match of code.matchAll(/\$\('([A-Za-z][\w-]*)'\)/g))assert(idList.includes(match[1]),`Missing UI control: ${match[1]}`);
+api.select('edge',api.model.edges[0].id);assert(get('inspectorBody').innerHTML.includes('<details'));assert(get('inspectorBody').innerHTML.includes('線をドラッグ'));
+console.log('PASS: existing regression checks plus arrow-body drag, endpoint offsets, clean output, JSON preservation and canvas panning.');
 if(process.env.FLOW_QA_SVG)fs.writeFileSync(process.env.FLOW_QA_SVG,api.svgMarkup(false));
