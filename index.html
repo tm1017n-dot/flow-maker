@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -27,6 +27,10 @@
       <header class="topbar">
         <div class="title-wrap"><label class="title-label" for="flowTitle">図の名前</label><input id="flowTitle" aria-label="図の名前" maxlength="200" value="申請受付の業務フロー"><div class="save-status" id="saveStatus">未保存の変更があります</div></div>
         <div class="top-actions">
+          <div class="theme-switch" role="group" aria-label="表示テーマ">
+            <button type="button" id="themeLight" aria-pressed="true">ライト</button>
+            <button type="button" id="themeDark" aria-pressed="false">ダーク</button>
+          </div>
           <button type="button" class="icon-button" id="undoBtn" title="元に戻す (Ctrl+Z)" aria-label="元に戻す">↶</button>
           <button type="button" class="icon-button" id="redoBtn" title="やり直す (Ctrl+Y)" aria-label="やり直す">↷</button>
           <span class="divider"></span>
@@ -65,7 +69,7 @@
   <div id="toast" role="status" aria-live="polite"></div>
   <dialog id="exportDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>図を書き出す</h2><p>PNG画像、または印刷画面からPDFとして保存します。</p></div><label>用紙サイズ<select id="paperSize"><option value="a4">A4 横</option><option value="a3">A3 横</option></select></label><div class="property-grid"><div><label for="pageMargin">余白（mm）</label><input id="pageMargin" type="number" min="0" max="30" value="10"></div><div><label for="pngDpi">PNG解像度</label><select id="pngDpi"><option value="150">150 dpi</option><option value="300">300 dpi</option></select></div></div><div class="export-preview" id="exportPreview"></div><p class="export-warning" id="exportWarning"></p><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button><button type="button" id="pngBtn" class="secondary">PNGを保存</button><button type="button" id="pdfBtn" class="primary">PDFを印刷・保存</button></div></form></dialog>
   <dialog id="diagnosticsDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>図全体を点検</h2><p>警告は編集を止めません。業務上必要な表現か確認してください。</p></div><div id="diagnosticsList"></div><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button></div></form></dialog>
-  <dialog id="helpDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>操作ガイド</h2></div><ol class="quick-guide"><li><strong>図形を置く</strong><p>担当レーンを選んで図形パネルの種類をクリック。「配置位置を指定」で場所を先に決めることもできます。</p></li><li><strong>作業をつなぐ</strong><p>図形を選んで「つなぐ」を押し、次の図形をクリックします。Escでキャンセルできます。</p></li><li><strong>矢印を調整</strong><p>線をドラッグして経路を移動。両端の丸は図形の周囲へ、条件ラベルは好きな位置へドラッグできます。</p></li><li><strong>画面を移動・整列</strong><p>空白をドラッグすると画面が動きます。Shift＋クリックで複数選択し、編集パネルで整列できます。</p></li><li><strong>表示を調整</strong><p>「図の倍率」で図だけを拡大・縮小し、「全体表示」で作図領域に収めます。ブラウザを拡大すると編集パネルは下段へ移り、狭い画面では図形パネルが上段へ移ります。作図領域を広げたい場合は「図形を隠す」「編集を隠す」を使います。パネル内に収まらない項目はスクロールして選べます。</p></li></ol><div class="modal-actions"><button value="cancel" class="primary">編集に戻る</button></div></form></dialog>
+  <dialog id="helpDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>操作ガイド</h2></div><ol class="quick-guide"><li><strong>図形を置く</strong><p>担当レーンを選んで図形パネルの種類をクリック。「配置位置を指定」で場所を先に決めることもできます。</p></li><li><strong>作業をつなぐ</strong><p>図形を選んで「つなぐ」を押し、次の図形をクリックします。Escでキャンセルできます。</p></li><li><strong>矢印を調整</strong><p>線をドラッグして経路を移動。両端の丸は図形の周囲へ、条件ラベルは好きな位置へドラッグできます。</p></li><li><strong>画面を移動・整列</strong><p>空白をドラッグすると画面が動きます。Shift＋クリックで複数選択し、編集パネルで整列できます。</p></li><li><strong>表示を調整</strong><p>上部の「ライト」「ダーク」で表示を切り替えます。キャンバスの外側の余白でホイールを動かすと、ページをスクロールできます。「図の倍率」で図だけを拡大・縮小し、「全体表示」で作図領域に収めます。ブラウザを拡大すると編集パネルは下段へ移り、狭い画面では図形パネルが上段へ移ります。作図領域を広げたい場合は「図形を隠す」「編集を隠す」を使います。パネル内に収まらない項目はスクロールして選べます。</p></li></ol><div class="modal-actions"><button value="cancel" class="primary">編集に戻る</button></div></form></dialog>
   <div id="printArea" aria-hidden="true"></div>
   <script src="app.js"></script>
 </body>
