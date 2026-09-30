@@ -4,19 +4,24 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const elements = new Map(), events = new Map(), storage = new Map(), timers = new Map(), downloads = [];
+const images = [], exportCanvases = [], exportErrors = [];
 let nextTimer = 0, downloadFails = false;
+let emptyPng = false;
 class Element {
   constructor(id) { this.id=id;this.style={};this.dataset={};this.value=id==='paperSize'?'a4':'';this.innerHTML='';this.classes=new Set();this.classList={add:c=>this.classes.add(c),remove:c=>this.classes.delete(c),toggle:c=>{if(this.classes.has(c)){this.classes.delete(c);return false;}this.classes.add(c);return true;}};this.clientWidth=1000;this.clientHeight=700; }
   addEventListener(event,handler){events.set(`${this.id}:${event}`,handler);}
   setAttribute(name,value){this[name]=value;}
-  getContext(){return {font:'',measureText(text){return {width:Array.from(text).reduce((sum,c)=>sum+(c.charCodeAt(0)>255?13:7),0)};}};}
+  getAttribute(name){return this[name] ?? null;}
+  getContext(){return {font:'',fillRect(){},drawImage(){},measureText(text){return {width:Array.from(text).reduce((sum,c)=>sum+(c.charCodeAt(0)>255?13:7),0)};}};}
+  toBlob(callback){callback(emptyPng ? null : new Blob(['png'],{type:'image/png'}));}
   getBoundingClientRect(){return {left:0,top:0,width:Number(this.width)||1160,height:Number(this.height)||790};}
   setPointerCapture(){} scrollTo(){} checkValidity(){return true;} showModal(){this.open=true;} close(){this.open=false;}
   click(){if(this.onclick)this.onclick();}
 }
 const get=id=>{if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);};
-const context={console,Blob,Date,Math,JSON,Map,Set,Object,Number,Array,String,crypto:require('node:crypto').webcrypto,
-  document:{getElementById:get,querySelector:()=>get('app'),createElement(tag){const e=new Element(tag);if(tag==='a')e.click=()=>{if(downloadFails)throw Error('blocked');};return e;},addEventListener(e,h){events.set(`document:${e}`,h);},head:{append(){}}},
+const context={console:{...console,error(error){exportErrors.push(error);}},Blob,Date,Math,JSON,Map,Set,Object,Number,Array,String,crypto:require('node:crypto').webcrypto,
+  Image:class {set src(value){images.push(this);}},
+  document:{getElementById:get,querySelector:()=>get('app'),createElement(tag){const e=new Element(tag);if(tag==='a')e.click=()=>{if(downloadFails)throw Error('blocked');};if(tag==='canvas')exportCanvases.push(e);return e;},addEventListener(e,h){events.set(`document:${e}`,h);},head:{append(){}}},
   window:{addEventListener(e,h){events.set(`window:${e}`,h);}},
   localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   confirm:()=>true,URL:{createObjectURL(blob){downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
@@ -115,5 +120,55 @@ fire('canvas','pointerdown',{closest:()=>null,event:{clientX:600,clientY:500,poi
 // Every static UI binding exists and IDs are unique (prevents missing-control startup failures).
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8'),idList=[...html.matchAll(/\bid="([^"\s]+)"/g)].map(m=>m[1]);assert.equal(new Set(idList).size,idList.length);for(const match of code.matchAll(/\$\('([A-Za-z][\w-]*)'\)/g))assert(idList.includes(match[1]),`Missing UI control: ${match[1]}`);
 api.select('edge',api.model.edges[0].id);assert(get('inspectorBody').innerHTML.includes('<details'));assert(get('inspectorBody').innerHTML.includes('線をドラッグ'));
-console.log('PASS: existing regression checks plus arrow-body drag, endpoint offsets, clean output, JSON preservation and canvas panning.');
+
+// Loading or undoing clears transient placement/connection state before rendering.
+api.load(initial,false);get('placeBtn').onclick();assert.equal(get('placeBtn')['aria-pressed'],'true');
+api.load(initial,false);assert.equal(get('placeBtn')['aria-pressed'],'false');
+get('placeBtn').onclick();events.get('canvas:click')({target:{closest:()=>null},clientX:600,clientY:650});
+assert(api.editingOverlay().includes('＋'));api.load(initial,false);assert(!api.editingOverlay().includes('＋'));
+api.select('node',api.model.nodes[1].id);action('connect');events.get('canvas:pointermove')({clientX:700,clientY:450});
+api.load(initial,false);assert(!api.editingOverlay().includes('data-connection-preview'));
+api.select('node',api.model.nodes[1].id);api.addNode('task');get('placeBtn').onclick();get('undoBtn').onclick();
+assert.equal(get('placeBtn')['aria-pressed'],'false');assert.equal(api.model.nodes.length,initial.nodes.length);
+
+// Shift deselecting the primary node edits the remaining selection.
+api.load(initial,false);api.select('node',api.model.nodes[1].id);api.select('node',api.model.nodes[4].id,true);
+api.select('node',api.model.nodes[4].id,true);assert.equal(api.selected.id,api.model.nodes[1].id);
+
+// Reordering a lane shifts a manual bend when both connected nodes move together.
+api.load(initial,false);const laneEdge=api.model.edges[1];laneEdge.routeAxis='x';laneEdge.bend=600;
+api.select('lane',api.model.lanes[1].id);action('laneRight');assert.equal(api.model.edges[1].bend,860);
+get('undoBtn').onclick();assert.equal(api.model.edges[1].bend,600);
+
+// All dialogs own keyboard input; shortcuts cannot edit the diagram behind them.
+for(const dialog of ['exportDialog','diagnosticsDialog','helpDialog']) {
+ api.load(initial,false);api.select('node',api.model.nodes[1].id);get(dialog).showModal();
+ const before=JSON.stringify(api.model);events.get('document:keydown')({target:{matches:()=>false},key:'Delete',preventDefault(){}});
+ assert.equal(JSON.stringify(api.model),before);get(dialog).close();
+}
+api.load(initial,false);api.select('node',api.model.nodes[1].id);api.addNode('task');get('undoBtn').onclick();
+events.get('document:keydown')({target:{matches:()=>false},key:'Z',ctrlKey:true,shiftKey:true,preventDefault(){}});
+assert.equal(api.model.nodes.length,initial.nodes.length+1);
 if(process.env.FLOW_QA_SVG)fs.writeFileSync(process.env.FLOW_QA_SVG,api.svgMarkup(false));
+
+// Multi-line headings use their actual height in overlap diagnostics.
+api.load(initial,false);api.model.lanes[0].name='長い担当レーンの名称を複数行で表示する\n見出しの二行目\n見出しの三行目\n見出しの四行目';
+api.model.nodes[0].y=170;assert(api.getDiagnostics().some(issue=>issue.id===api.model.nodes[0].id && issue.message.includes('見出しに重な')));
+
+(async () => {
+ // PNG output uses a single snapshot of page dimensions/content while image loading is pending.
+ api.load(initial,false);get('pngBtn').disabled=false;
+ const pending=get('pngBtn').onclick();assert.equal(get('pngBtn').disabled,true);
+ api.model.exportSettings={paper:'a3',margin:10,dpi:300};
+ images.pop().onload();await pending;
+ assert.equal(exportCanvases.at(-1).width,1754);assert.equal(exportCanvases.at(-1).height,1240);
+ assert.equal(downloads.at(-1).type,'image/png');assert.equal(get('pngBtn').disabled,false);
+ // Download failures and empty conversions are caught and always unlock the button.
+ for(const failure of ['download','conversion']) {
+  downloadFails=failure==='download';emptyPng=failure==='conversion';
+  const attempt=get('pngBtn').onclick();images.pop().onload();await attempt;
+  assert.equal(get('pngBtn').disabled,false);assert.match(get('toast').textContent,/失敗/);
+ }
+ downloadFails=false;emptyPng=false;assert.equal(exportErrors.length,2);
+ console.log('PASS: editing, recovery, JSON, export, drag, lane reflow, selection, mode resets, modal isolation and PNG snapshots/failures.');
+})().catch(error=>{console.error(error);process.exitCode=1;});
