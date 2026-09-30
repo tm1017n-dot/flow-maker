@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const K = 'flow-maker-recovery-v1';
+  const K = 'flow-maker-manual-recovery-v2';
   const THEME_KEY = 'flow-maker-theme-v1';
   const TYPES = {start:'開始・終了',task:'作業',decision:'判断',document:'帳票',system:'システム'};
   const SIZES = {start:[126,54],task:[172,76],decision:[148,94],document:[144,67],system:[144,67]};
@@ -53,14 +53,15 @@
   function writeRecovery(){if(!dirty)return;try{localStorage.setItem(K,JSON.stringify({at:Date.now(),model}));}catch{notify('一時保存できませんでした。編集用ファイルを保存してください。');}}
   function scheduleRecovery(){clearTimeout(saveTimer);const generation=++recoveryGeneration,id=model.id;saveTimer=setTimeout(()=>{if(generation===recoveryGeneration&&model.id===id)writeRecovery();},350);}
   // Record only actual model changes. Panel visibility and pointer modes are not saved.
-  function changed(before) {
+  function changed(before, redraw = true) {
     if (before && JSON.stringify(before) === JSON.stringify(model)) return;
     undo.push(before || clone(model));
     if (undo.length > 60) undo.shift();
     redo = [];
     status();
     scheduleRecovery();
-    render();
+    if (redraw) render();
+    else { $('undoBtn').disabled=!undo.length; $('redoBtn').disabled=!redo.length; }
   }
 
   function resetInteraction() {
@@ -123,7 +124,7 @@
   }
   function confirmLoss(){return !dirty || confirm('未保存の変更があります。現在の図を閉じますか？');}
   function validate(data){
-    if(!data||data.version!==1||!Array.isArray(data.lanes)||!Array.isArray(data.nodes)||!Array.isArray(data.edges)||!Array.isArray(data.associations)||!data.lanes.length||typeof data.title!=='string'||typeof data.id!=='string')throw Error('対応していない形式です。');
+    if(!data||![1,2].includes(data.version)||!Array.isArray(data.lanes)||!Array.isArray(data.nodes)||!Array.isArray(data.edges)||!Array.isArray(data.associations)||!data.lanes.length||typeof data.title!=='string'||typeof data.id!=='string')throw Error('対応していない形式です。');
     if(data.lanes.length>30||data.nodes.length>1000||data.edges.length>3000)throw Error('扱える図の規模を超えています。');
     const string=(v,max=1000)=>typeof v==='string'&&v.length<=max;
     const number=(v,min,max)=>Number.isFinite(v)&&v>=min&&v<=max;
@@ -139,11 +140,21 @@
       for(const key of ['bend','labelDx','labelDy'])if(e[key]!==undefined&&!number(e[key],-100000,100000))throw Error('矢印の座標が正しくありません。');for(const key of ['fromOffset','toOffset'])if(e[key]!==undefined&&!number(e[key],-.85,.85))throw Error('接続端の位置が正しくありません。');}
     for(const a of data.associations){if(!nodes.has(a.artifact)||isFlow(nodes.get(a.artifact))||!isFlow(nodes.get(a.task)))throw Error('帳票・システムの関連付けが正しくありません。');}
     if(data.exportSettings!==undefined){const x=data.exportSettings;if(!x||!['a4','a3'].includes(x.paper)||!number(x.margin,0,30)||![150,300].includes(x.dpi))throw Error('出力設定が正しくありません。');}
+    if(data.version===2)FlowManual.validate(data.manual);
+    else if(data.manual!==undefined)throw Error('マニュアルを含むファイルは新形式で保存してください。');
     return data;
   }
   function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   function filename(ext){return (model.title.trim()||'業務フロー').replace(/[\\/:*?"<>|]/g,'_').slice(0,80)+'.'+ext;}
-  function save(){try{download(new Blob([JSON.stringify(model,null,2)],{type:'application/json'}),filename('json'));dirty=false;savedSnapshot=JSON.stringify(model);lastDownloadAt=new Date();clearRecovery();status();notify('保存用JSONのダウンロードを開始しました。保存先をご確認ください。');}catch{notify('ダウンロードを開始できませんでした。再度保存してください。');}}
+  function save() {
+    try {
+      const blob=new Blob([JSON.stringify(model,null,2)],{type:'application/json'});
+      if(blob.size>20_000_000){notify('保存データが20MBを超えています。内容を分けて保存してください。');return;}
+      download(blob,filename('json'));
+      savedSnapshot=JSON.stringify(model);lastDownloadAt=new Date();clearRecovery();status();
+      notify('保存用JSONのダウンロードを開始しました。保存先をご確認ください。');
+    } catch { notify('ダウンロードを開始できませんでした。再度保存してください。'); }
+  }
   const FONT = 'Segoe UI,Yu Gothic UI,Meiryo,sans-serif';
   let measureContext;
   function textWidth(text,size=13){if(!measureContext)measureContext=document.createElement('canvas').getContext('2d');measureContext.font=`700 ${size}px ${FONT}`;return measureContext.measureText(text).width;}
@@ -263,6 +274,7 @@
   function render() {
     renderCanvas();
     renderInspector();
+    manualUI.render();
     $('counts').textContent = `${model.lanes.length} レーン・${model.nodes.length} 図形`;
     $('footerMeta').textContent = `${model.edges.length} 接続`;
     $('undoBtn').disabled = !undo.length;
@@ -282,7 +294,7 @@
     if(selected.kind==='association'){const a=model.associations.find(a=>a.id===selected.id);if(!a){selected=null;renderInspector();return;}el.innerHTML=`<div class="inspector-content"><h3>関連付け</h3><p class="inspector-note">${esc(getNode(a.artifact).label)}<br>↓<br>${esc(getNode(a.task).label)}</p><div class="inspector-actions"><button class="danger" data-action="delete">関連付けを解除</button></div></div>`;return;}
     if(selected.kind==='node'){
       const n=getNode(selected.id);if(!n){selected=null;renderInspector();return;}const artifact=!isFlow(n);
-      el.innerHTML=`<div class="inspector-content"><h3>${esc(TYPES[n.type])}を編集</h3><label for="nodeLabel">表示する文言</label><textarea id="nodeLabel" data-field="label" maxlength="1000">${esc(n.label)}</textarea><label for="nodeLane">担当レーン</label><select id="nodeLane" data-field="laneId">${model.lanes.map(l=>`<option value="${esc(l.id)}" ${l.id===n.laneId?'selected':''}>${esc(l.name)}</option>`).join('')}</select><details class="advanced-properties"><summary>図形サイズ・文字サイズ</summary><div class="property-grid"><div><label for="nodeWidth">図形の幅</label><input id="nodeWidth" type="number" data-field="width" min="80" max="600" value="${n.width||SIZES[n.type][0]}"></div><div><label for="nodeHeight">最低の高さ</label><input id="nodeHeight" type="number" data-field="height" min="40" max="2000" value="${n.height||SIZES[n.type][1]}"></div></div><label for="nodeFont">文字サイズ</label><input id="nodeFont" type="number" data-field="fontSize" min="10" max="24" value="${n.fontSize||13}"><p class="property-help">改行を保持し、全文が収まる高さへ自動で広がります。幅を広げると行数を減らせます。</p></details><label for="nodeDesc">補足メモ（編集用）</label><textarea id="nodeDesc" data-field="description" maxlength="2000" placeholder="必要な手順や注意事項">${esc(n.description||'')}</textarea><div class="inspector-actions">${artifact?'<button class="accent" data-action="associate">作業に関連付ける</button>':'<button class="accent" data-action="connect">→ つなぐ</button>'}<button data-action="duplicate">複製</button><button class="danger" data-action="delete">削除</button></div><p class="inspector-note">${artifact?'関連付けは破線で表示されます。':'図形の移動中も矢印は接続されたままです。'}</p></div>`;return;
+      el.innerHTML=`<div class="inspector-content"><h3>${esc(TYPES[n.type])}を編集</h3><label for="nodeLabel">表示する文言</label><textarea id="nodeLabel" data-field="label" maxlength="1000">${esc(n.label)}</textarea><label for="nodeLane">担当レーン</label><select id="nodeLane" data-field="laneId">${model.lanes.map(l=>`<option value="${esc(l.id)}" ${l.id===n.laneId?'selected':''}>${esc(l.name)}</option>`).join('')}</select><details class="advanced-properties"><summary>図形サイズ・文字サイズ</summary><div class="property-grid"><div><label for="nodeWidth">図形の幅</label><input id="nodeWidth" type="number" data-field="width" min="80" max="600" value="${n.width||SIZES[n.type][0]}"></div><div><label for="nodeHeight">最低の高さ</label><input id="nodeHeight" type="number" data-field="height" min="40" max="2000" value="${n.height||SIZES[n.type][1]}"></div></div><label for="nodeFont">文字サイズ</label><input id="nodeFont" type="number" data-field="fontSize" min="10" max="24" value="${n.fontSize||13}"><p class="property-help">改行を保持し、全文が収まる高さへ自動で広がります。幅を広げると行数を減らせます。</p></details><label for="nodeDesc">補足メモ（編集用）</label><textarea id="nodeDesc" data-field="description" maxlength="2000" placeholder="必要な手順や注意事項">${esc(n.description||'')}</textarea><div class="inspector-actions">${artifact?'<button class="accent" data-action="associate">作業に関連付ける</button>':'<button class="accent" data-action="connect">→ つなぐ</button>'}<button class="accent" data-action="manual">手順を編集</button><button data-action="duplicate">複製</button><button class="danger" data-action="delete">削除</button></div><p class="inspector-note">${artifact?'関連付けは破線で表示されます。':'図形の移動中も矢印は接続されたままです。'}</p></div>`;return;
     }
     if(selected.kind==='edge'){
       const e=model.edges.find(x=>x.id===selected.id);if(!e){selected=null;renderInspector();return;}
@@ -473,7 +485,7 @@
   });
   $('canvas').addEventListener('pointercancel',()=>{if(drag){if(drag.before)model=drag.before;drag=null;guides=[];render();}});
   $('canvas').addEventListener('click',e=>{if(suppressClick){suppressClick=false;return;}if(drag)return;const node=e.target.closest('[data-node]'),edge=e.target.closest('[data-edge]'),association=e.target.closest('[data-association]'),lane=e.target.closest('[data-lane]');if(placing){const p=coordinate(e);activeLaneId=laneAt(p.x).id;insertionPoint=p;placing=false;selected={kind:'lane',id:activeLaneId};multiSelection.clear();render();notify('配置位置を指定しました。図形パネルから図形を選んでください。');return;}if(connecting){if(node)connectTo(node.dataset.node);return;}if(node)select('node',node.dataset.node,e.shiftKey);else if(edge)select('edge',edge.dataset.edge);else if(association)select('association',association.dataset.association);else if(lane)select('lane',lane.dataset.lane);else{selected=null;multiSelection.clear();render();}});
-  $('inspectorBody').addEventListener('click',e=>{const arrangement=e.target.closest('[data-arrange]')?.dataset.arrange;if(arrangement){arrange(arrangement);return;}if(e.target.id==='cancelConnect'){cancelConnection();render();return;}const action=e.target.closest('[data-action]')?.dataset.action;if(!action||!selected)return;if(action==='delete'){deleteSelected();return;}if(action==='resetRoute'){const before=clone(model),e=model.edges.find(e=>e.id===selected.id);for(const key of ['routeAxis','bend','fromPort','toPort','fromOffset','toOffset','labelDx','labelDy'])delete e[key];changed(before);return;}if(action==='connect'||action==='associate'){connecting={mode:action,from:selected.id};pendingPointer=null;placing=false;insertionPoint=null;render();return;}if(action==='duplicate'){const n=getNode(selected.id),before=clone(model),copy={...clone(n),id:uid(),x:n.x+28,y:n.y+105};model.nodes.push(copy);selected={kind:'node',id:copy.id};multiSelection=new Set([copy.id]);changed(before);return;}if(action==='laneLeft'||action==='laneRight')moveLane(action==='laneLeft'?-1:1);});
+  $('inspectorBody').addEventListener('click',e=>{const arrangement=e.target.closest('[data-arrange]')?.dataset.arrange;if(arrangement){arrange(arrangement);return;}if(e.target.id==='cancelConnect'){cancelConnection();render();return;}const action=e.target.closest('[data-action]')?.dataset.action;if(!action||!selected)return;if(action==='manual'){manualUI.openNode(selected.id);return;}if(action==='delete'){deleteSelected();return;}if(action==='resetRoute'){const before=clone(model),e=model.edges.find(e=>e.id===selected.id);for(const key of ['routeAxis','bend','fromPort','toPort','fromOffset','toOffset','labelDx','labelDy'])delete e[key];changed(before);return;}if(action==='connect'||action==='associate'){connecting={mode:action,from:selected.id};pendingPointer=null;placing=false;insertionPoint=null;render();return;}if(action==='duplicate'){const n=getNode(selected.id),before=clone(model),copy={...clone(n),id:uid(),x:n.x+28,y:n.y+105};model.nodes.push(copy);selected={kind:'node',id:copy.id};multiSelection=new Set([copy.id]);changed(before);return;}if(action==='laneLeft'||action==='laneRight')moveLane(action==='laneLeft'?-1:1);});
   $('inspectorBody').addEventListener('focusin',e=>{if(e.target.matches('[data-field]'))editBefore=clone(model);});
   $('inspectorBody').addEventListener('input',e=>{
     const f=e.target.dataset.field;if(!f||!selected)return;
@@ -500,8 +512,8 @@
     if(f==='laneId'){const n=getNode(selected.id);const old=model.lanes.findIndex(l=>l.id===n.laneId),next=model.lanes.findIndex(l=>l.id===e.target.value);n.x+=(next-old)*260;n.laneId=e.target.value;}
     if(JSON.stringify(before)!==JSON.stringify(model))changed(before);else renderInspector();editBefore=null;
   });
-  $('flowTitle').addEventListener('focus',()=>editBefore=clone(model));$('flowTitle').addEventListener('input',e=>{model.title=e.target.value;dirty=true;status();scheduleRecovery();renderCanvas();});$('flowTitle').addEventListener('change',()=>{if(editBefore&&JSON.stringify(editBefore)!==JSON.stringify(model))changed(editBefore);editBefore=null;});
-  $('saveBtn').onclick=save;$('openBtn').onclick=()=>{if(confirmLoss())$('fileInput').click();};$('fileInput').onchange=async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;try{if(file.size>5_000_000)throw Error('ファイルが大きすぎます。');const data=validate(JSON.parse(await file.text()));load(data,false);clearRecovery();notify('編集用ファイルを開きました。');}catch(err){notify('開けませんでした: '+err.message);}};
+  $('flowTitle').addEventListener('focus',()=>editBefore=clone(model));$('flowTitle').addEventListener('input',e=>{model.title=e.target.value;dirty=true;status();scheduleRecovery();renderCanvas();if(manualUI.view==='preview')manualUI.render();});$('flowTitle').addEventListener('change',()=>{if(editBefore&&JSON.stringify(editBefore)!==JSON.stringify(model))changed(editBefore,false);editBefore=null;});
+  $('saveBtn').onclick=save;$('openBtn').onclick=()=>{if(confirmLoss())$('fileInput').click();};$('fileInput').onchange=async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;try{if(file.size>20_000_000)throw Error('ファイルが大きすぎます。');const data=validate(JSON.parse(await file.text()));load(data,false);clearRecovery();notify('編集用ファイルを開きました。');}catch(err){notify('開けませんでした: '+err.message);}};
   $('newBtn').onclick=()=>{if(confirmLoss()){load(empty(),true);scheduleRecovery();notify('新しい図を作成しました。');}};
   $('sampleBtn').onclick=()=>{if(confirmLoss()){load(sample(),true);scheduleRecovery();notify('サンプルを読み込みました。');}};
   $('undoBtn').onclick=undoAction;$('redoBtn').onclick=redoAction;
@@ -539,9 +551,15 @@
     if (modifier && key === 's') { event.preventDefault(); save(); }
     if (modifier && key === 'z' && !editable) { event.preventDefault(); event.shiftKey ? redoAction() : undoAction(); }
     if (modifier && key === 'y' && !editable) { event.preventDefault(); redoAction(); }
-    if (key === 'delete' && !editable) { event.preventDefault(); deleteSelected(); }
+    if (key === 'delete' && !editable && manualUI.view === 'flow') { event.preventDefault(); deleteSelected(); }
   });
   window.addEventListener('beforeunload',e=>{if(dirty){clearTimeout(saveTimer);writeRecovery();e.preventDefault();e.returnValue='';}});
+  const manualUI = FlowManual.init({
+    model:()=>model, changed, commit:before=>changed(before,false), notify, download, filename, svg:()=>svgMarkup(false),
+    touch:()=>{status();scheduleRecovery();},
+    onView:next=>{cancelConnection();placing=false;insertionPoint=null;editBefore=null;if(next==='flow'&&model)render();},
+    showNode:id=>{setPanelCollapsed('inspector',false);select('node',id);const node=getNode(id);if(node)$('canvasScroll').scrollTo(Math.max(0,(node.x-200)*zoom),Math.max(0,(node.y-200)*zoom));}
+  });
   restoreTheme();
   try{const draft=JSON.parse(localStorage.getItem(K));if(draft?.model){validate(draft.model);const when=new Date(draft.at).toLocaleString('ja-JP');if(confirm(`一時保存された「${draft.model.title}」（${when}）があります。復旧しますか？`)){load(draft.model,true);notify('一時保存から復旧しました。編集用ファイルも保存してください。');}else{clearRecovery();load(sample(),true);}}else load(sample(),true);}catch{clearRecovery();load(sample(),true);}
 })();
