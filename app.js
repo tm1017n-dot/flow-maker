@@ -52,11 +52,18 @@
   function notify(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
   function writeRecovery(){if(!dirty)return;try{localStorage.setItem(K,JSON.stringify({at:Date.now(),model}));}catch{notify('一時保存できませんでした。編集用ファイルを保存してください。');}}
   function scheduleRecovery(){clearTimeout(saveTimer);const generation=++recoveryGeneration,id=model.id;saveTimer=setTimeout(()=>{if(generation===recoveryGeneration&&model.id===id)writeRecovery();},350);}
+  // Large embedded images must not multiply without bounds in undo/redo snapshots.
+  const historySizes = new WeakMap();
+  function trimHistory(stack) {
+    let size=0;
+    for(const item of stack){if(!historySizes.has(item))historySizes.set(item,JSON.stringify(item).length);size+=historySizes.get(item);}
+    while(stack.length>1&&(stack.length>60||size>16*1024*1024))size-=historySizes.get(stack.shift());
+  }
   // Record only actual model changes. Panel visibility and pointer modes are not saved.
   function changed(before, redraw = true) {
     if (before && JSON.stringify(before) === JSON.stringify(model)) return;
     undo.push(before || clone(model));
-    if (undo.length > 60) undo.shift();
+    trimHistory(undo);
     redo = [];
     status();
     scheduleRecovery();
@@ -441,6 +448,7 @@
     if (!source.length) return;
     destination.push(clone(model));
     model = source.pop();
+    trimHistory(destination);
     resetInteraction();
     $('flowTitle').value = model.title;
     status();
