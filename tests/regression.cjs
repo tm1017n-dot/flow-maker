@@ -29,7 +29,7 @@ const context={console:{...console,error(error){exportErrors.push(error);}},Blob
 };
 context.globalThis=context;
 let code=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
-code=code.replace(/\}\)\(\);\s*$/, 'globalThis.api={load,validate,sample,select,changed,scheduleRecovery,svgMarkup,edgePath,nodeGeometry,wrapText,arrange,addNode,addLane,getDiagnostics,fitCanvas,pageSvg,pageGeometry,preview,changeExportOptions,editingOverlay,portPoint,closestPort,nearestSegment,get model(){return model},get dirty(){return dirty},get selected(){return selected}};})();');
+code=code.replace(/\}\)\(\);\s*$/, 'globalThis.api={load,validate,sample,select,changed,scheduleRecovery,svgMarkup,edgePath,nodeGeometry,wrapText,arrange,addNode,addLane,getDiagnostics,fitCanvas,pageSvg,pageGeometry,preview,changeExportOptions,editingOverlay,portPoint,closestPort,nearestSegment,get model(){return model},get historyDepth(){return {undo:undo.length,redo:redo.length}},get dirty(){return dirty},get selected(){return selected}};})();');
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../manual.js'),'utf8'),context);
 vm.runInNewContext(code,context);const api=context.api;
 const flush=()=>{const pending=[...timers.values()];timers.clear();pending.forEach(fn=>fn());};
@@ -215,10 +215,68 @@ get('undoBtn').onclick();assert.equal(api.model.manual.chapters.at(-1).id,addedC
 const retainedEntry=api.model.manual.entries.at(-1).id;chapterSelect(addedChapter.id);manualAction('deleteChapter');
 assert(api.model.manual.entries.some(e=>e.id===retainedEntry));assert(!api.model.manual.chapters.some(c=>c.id===addedChapter.id));
 assert.doesNotThrow(()=>api.validate(api.model));
-if(process.env.FLOW_QA_MANUAL)fs.writeFileSync(process.env.FLOW_QA_MANUAL,context.FlowManual.html(api.model,api.svgMarkup(false)));
+// Guidance, actionable review and supplemental document data.
+get('manualCheck').onclick();assert.equal(get('manualCheckList').hidden,false);
+const checkDom=get('manualCheckList').innerHTML;
+selectManual(procedureId);const reviewBeforeInput=get('manualCheckList').innerHTML;
+manualField('purpose','申請を受け付けるため');
+assert.equal(get('manualCheckList').innerHTML,reviewBeforeInput,'Blur must preserve clicked review targets');
+manualField('completion','受付番号が発行されている');
+assert(!context.FlowManual.issues(api.model,api.model.manual.entries.find(e=>e.id===procedureId)).some(m=>m.includes('目的')||m.includes('完了')));
+manualField('references','申請要領 | https://example.com/guide?a=1&b=2\n禁止 | javascript:alert(1)\n共有フォルダの申請様式');
+const richHtml=context.FlowManual.html(api.model,api.svgMarkup(false));
+assert(richHtml.includes('href="https://example.com/guide?a=1&amp;b=2"'));assert(!richHtml.includes('href="javascript:'));
+assert(context.FlowManual.review(api.model).some(r=>r.entryId===procedureId&&r.message.includes('参考資料')));
+const pngData='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9i8AAAAASUVORK5CYII=';
+const image={data:pngData,caption:'画面 <確認> "例"'};
+assert(context.FlowManual.validateImage(image));
+const richSaved=JSON.parse(JSON.stringify(api.model));
+richSaved.manual.entries.find(e=>e.id===procedureId).images=[image];
+Object.assign(richSaved.manual.meta,{author:'担当者 <A>',reviewer:'確認担当',date:'2026-09-30',changes:'記載手順を更新\n帳票を追加'});
+api.load(richSaved,false);assert.equal(api.dirty,false);selectManual(procedureId);
+assert(context.FlowManual.html(api.model,api.svgMarkup(false)).includes('alt="画面 &lt;確認&gt; &quot;例&quot;"'));
+assert(context.FlowManual.html(api.model,api.svgMarkup(false)).includes('担当者 &lt;A&gt;'));const qaHtml=context.FlowManual.html(api.model,api.svgMarkup(false));
+for(const badImage of [{data:'data:image/svg+xml;base64,AAAA',caption:''},{data:'data:image/png;base64,AAAA',caption:''},{data:pngData,caption:'x'.repeat(301)}]){
+ const bad=JSON.parse(JSON.stringify(richSaved));bad.manual.entries[0].images=[badImage];const current=JSON.stringify(api.model);
+ assert.throws(()=>api.load(bad,false));assert.equal(JSON.stringify(api.model),current);
+}
+const tooManyImages=JSON.parse(JSON.stringify(richSaved));tooManyImages.manual.entries[0].images=Array(7).fill(image);assert.throws(()=>api.validate(tooManyImages));
+const hugeImage={data:'data:image/png;base64,iVBORw0KGgo'+'A'.repeat(1300000),caption:''};
+const tooLarge=JSON.parse(JSON.stringify(richSaved));tooLarge.manual.entries[0].images=Array(6).fill(hugeImage);tooLarge.manual.entries[1].images=Array(3).fill(hugeImage);assert.throws(()=>api.validate(tooLarge));
+const badDate=JSON.parse(JSON.stringify(richSaved));badDate.manual.meta.date='2026-02-30';assert.throws(()=>api.load(badDate,false));
+manualAction('duplicate');const duplicate=api.model.manual.entries.find(e=>e.title.endsWith('（複製）'));
+assert(duplicate);assert.equal(duplicate.nodeId,null);assert(duplicate.fields.body.includes('資料を確認する'));assert.equal(duplicate.images[0].data,pngData);assert.notEqual(duplicate.code,api.model.manual.entries.find(e=>e.id===procedureId).code);
+get('undoBtn').onclick();assert(!api.model.manual.entries.some(e=>e.id===duplicate.id));get('redoBtn').onclick();assert(api.model.manual.entries.some(e=>e.id===duplicate.id));
+const orphan=JSON.parse(JSON.stringify(richSaved));orphan.manual.entries.find(e=>e.id===procedureId).nodeId='missing-node';api.load(orphan,false);selectManual(procedureId);
+fire('manualView','change',{dataset:{manualAction:'relink'},value:api.model.nodes[1].id});
+assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).nodeId,api.model.nodes[1].id);assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).fields.steps,'資料を確認する\n結果を記録する');
+get('undoBtn').onclick();assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).nodeId,'missing-node');
+get('manualNext').onclick();assert(get('manualEditor').innerHTML.includes('manualEntryHints'));
+// Image-heavy history is bounded by size, while the most recent changes remain undoable.
+const heavy=JSON.parse(JSON.stringify(richSaved));heavy.manual.entries[0].images=Array(6).fill(hugeImage);heavy.manual.entries[1].images=[];api.load(heavy,false);
+for(let i=0;i<6;i++){const before=JSON.parse(JSON.stringify(api.model));api.model.manual.meta.revision=String(i);api.changed(before);}
+assert(api.historyDepth.undo<=2);get('undoBtn').onclick();assert.equal(api.model.manual.meta.revision,'4');get('redoBtn').onclick();assert.equal(api.model.manual.meta.revision,'5');
+// Legacy v2 has no optional metadata, images or references and remains valid.
+assert.doesNotThrow(()=>api.load(manualSaved,false));
+if(process.env.FLOW_QA_MANUAL)fs.writeFileSync(process.env.FLOW_QA_MANUAL,qaHtml);
 api.load(initial,false);assert.equal(api.model.version,1);assert.equal(api.model.manual,undefined);get('tabFlow').onclick();
 
 (async () => {
+ // Asynchronous image loading is atomic, undoable, and cannot cross documents.
+ api.load(manualSaved,false);get('tabManual').onclick();selectManual(procedureId);
+ context.FileReader=class {readAsDataURL(file){this.result=file.data;this.onload();}};
+ const upload=files=>fire('manualView','change',{dataset:{manualImages:''},files,value:'selected'});
+ const file={type:'image/png',size:100,name:'画面.png',data:pngData};
+ upload([file]);await Promise.resolve();images.pop().onload();await Promise.resolve();await Promise.resolve();
+ assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).images.length,1);
+ get('undoBtn').onclick();assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).images,undefined);get('redoBtn').onclick();
+ const captionTarget={matches:()=>true,dataset:{imageCaption:'0'},value:'確認画面'};
+ fire('manualView','focusin',captionTarget);fire('manualView','input',captionTarget);fire('manualView','change',captionTarget);
+ assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).images[0].caption,'確認画面');
+ fire('manualView','click',{closest:selector=>selector==='[data-remove-image]'?{dataset:{removeImage:'0'}}:null});assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).images.length,0);get('undoBtn').onclick();assert.equal(api.model.manual.entries.find(e=>e.id===procedureId).images.length,1);
+ const beforeOversize=JSON.stringify(api.model);upload([{...file,size:1048577}]);assert.equal(JSON.stringify(api.model),beforeOversize);
+ upload([file]);await Promise.resolve();const pendingImage=images.pop();api.load(api.sample(),false);pendingImage.onload();await Promise.resolve();await Promise.resolve();
+ assert.equal(api.model.manual,undefined);assert.match(get('toast').textContent,/切り替わった/);
  // PNG output uses a single snapshot of page dimensions/content while image loading is pending.
  api.load(initial,false);get('pngBtn').disabled=false;
  const pending=get('pngBtn').onclick();assert.equal(get('pngBtn').disabled,true);
@@ -233,5 +291,5 @@ api.load(initial,false);assert.equal(api.model.version,1);assert.equal(api.model
   assert.equal(get('pngBtn').disabled,false);assert.match(get('toast').textContent,/失敗/);
  }
  downloadFails=false;emptyPng=false;assert.equal(exportErrors.length,2);
- console.log('PASS: flow regression plus manual creation, editing/history, navigation, safe HTML, linked names, JSON and retained procedures.');
+ console.log('PASS: flow regression; manual editing/history, review/navigation, safe references, image upload/race/limits, metadata, duplication, relinking and legacy JSON.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
