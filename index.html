@@ -4,29 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Flow Maker — 業務フロー図</title>
+  <link rel="icon" type="image/svg+xml" href="assets/flow-maker.svg">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="manual.css">
 </head>
 <body>
   <div class="app" data-view="flow">
     <aside class="sidebar" id="shapePanel">
-      <div class="brand"><span class="brand-icon">↗</span><span>flow<span class="brand-light">maker</span></span></div>
-      <div class="sidebar-label">図形を追加</div>
-      <div class="palette" id="palette">
-        <button type="button" data-add="start"><span class="palette-icon start">●</span><span>開始・終了<small>フローの入口と出口</small></span><b>＋</b></button>
-        <button type="button" data-add="task"><span class="palette-icon task">▣</span><span>作業<small>担当者が行う処理</small></span><b>＋</b></button>
-        <button type="button" data-add="decision"><span class="palette-icon decision">◇</span><span>判断<small>条件による分岐</small></span><b>＋</b></button>
-        <button type="button" data-add="document"><span class="palette-icon document">▤</span><span>帳票<small>申請書・通知書など</small></span><b>＋</b></button>
-        <button type="button" data-add="system"><span class="palette-icon system">▧</span><span>システム<small>利用するシステム</small></span><b>＋</b></button>
-      </div>
-      <button type="button" class="add-lane" id="addLane">＋ 担当レーンを追加</button>
-      <button type="button" class="sample-button" id="sampleBtn">サンプルを読み込む</button>
+      <div class="brand"><img class="brand-mark" src="assets/flow-maker.svg" alt=""><span>flow<span class="brand-light">maker</span></span></div>
+      <aside class="manual-outline-panel"><div class="manual-outline-head"><h2>章と手順</h2><p id="manualSummary"></p></div><input class="manual-search" id="manualSearch" type="search" placeholder="見出し・本文を検索" aria-label="手順を検索"><div class="manual-outline-actions"><button class="secondary" type="button" id="manualAddChapter">＋ 章を追加</button><button class="secondary" type="button" id="manualAddText">＋ 説明を追加</button><button class="secondary" type="button" id="manualSync" title="フローに新しく追加した作業・判断を取り込みます">図の作業を取り込む</button></div><div id="manualOutline"></div><details class="manual-settings"><summary>文書の基本情報</summary><label class="manual-field">所管部署<input id="manualDepartment" data-manual-meta="department" maxlength="100"></label><label class="manual-field">文書の版<input id="manualRevision" data-manual-meta="revision" maxlength="50"></label><label class="manual-field">作成者<input id="manualMeta-author" data-manual-meta="author" maxlength="100"></label><label class="manual-field">確認者<input id="manualMeta-reviewer" data-manual-meta="reviewer" maxlength="100"></label><label class="manual-field">更新日<input id="manualMeta-date" data-manual-meta="date" type="date"></label><label class="manual-field">改訂内容<textarea id="manualMeta-changes" data-manual-meta="changes" rows="4" maxlength="6000"></textarea></label><p class="property-help">確認者は手入力の記録です。システムによる承認ではありません。</p></details></aside>
       <div class="sidebar-bottom"><span class="online-dot"></span> オフラインで利用できます <small>編集中はブラウザ内に一時保存</small></div>
     </aside>
 
     <main class="workspace">
       <header class="topbar">
-        <div class="title-wrap"><label class="title-label" for="flowTitle">図の名前</label><input id="flowTitle" aria-label="図の名前" maxlength="200" value="申請受付の業務フロー"><div class="save-status" id="saveStatus">未保存の変更があります</div></div>
+        <div class="title-wrap"><label class="title-label" for="flowTitle">文書の名前</label><input id="flowTitle" aria-label="文書の名前" maxlength="200" value="申請受付の業務フロー"><div class="save-status" id="saveStatus">未保存の変更があります</div></div>
         <div class="top-actions">
           <div class="theme-switch" role="group" aria-label="表示テーマ">
             <button type="button" id="themeLight" aria-pressed="true">ライト</button>
@@ -35,6 +27,7 @@
           <button type="button" class="icon-button" id="undoBtn" title="元に戻す (Ctrl+Z)" aria-label="元に戻す">↶</button>
           <button type="button" class="icon-button" id="redoBtn" title="やり直す (Ctrl+Y)" aria-label="やり直す">↷</button>
           <span class="divider"></span>
+          <button type="button" class="secondary" id="toggleSidebar" aria-pressed="false" aria-expanded="true" aria-controls="shapePanel">章一覧を隠す</button>
           <button type="button" class="secondary" id="newBtn">新規</button>
           <button type="button" class="secondary" id="openBtn">開く</button>
           <button type="button" class="secondary" id="saveBtn">保存</button>
@@ -60,10 +53,10 @@
               </div>
               <span class="divider"></span>
               <button type="button" id="fitBtn" title="現在の作図領域に図全体を収めます">全体表示</button>
-              <button type="button" id="toggleSidebar" aria-pressed="false" aria-expanded="true" aria-controls="shapePanel">図形を隠す</button>
               <button type="button" id="toggleInspector" aria-pressed="false" aria-expanded="true" aria-controls="propertyPanel">編集を隠す</button>
             </div>
           </div>
+          <div class="flow-add-toolbar" aria-label="フローの追加操作"><label for="addToLane">追加先の担当<select id="addToLane"></select></label><div class="flow-add-actions" id="palette"><button type="button" class="primary" data-add="task">＋ 作業</button><button type="button" class="secondary" data-add="decision">◇ 判断</button><details id="moreShapes" class="flow-more"><summary>その他の図形</summary><div><button type="button" data-add="start">● 開始・終了</button><button type="button" data-add="document">▤ 帳票</button><button type="button" data-add="system">▧ システム</button></div></details></div><button type="button" class="secondary" id="addLane">＋ 担当レーン</button><details class="flow-more"><summary>サンプル</summary><div><button type="button" id="sampleBtn">サンプルを読み込む</button><small>現在の文書を置き換えます。</small></div></details></div>
           <div class="mode-toolbar"><div><button type="button" id="placeBtn" aria-pressed="false">＋ 配置位置を指定</button><button type="button" id="snapBtn" aria-pressed="true">位置合わせ ON</button></div><div><button type="button" id="checkBtn">点検 <span id="issueCount"></span></button><button type="button" id="helpBtn">操作ガイド</button></div></div><div class="canvas-scroll" id="canvasScroll"><div class="canvas-inner" id="canvasInner"><svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="業務フロー図"></svg></div></div>
           <div class="canvas-footer"><span id="hint" role="status" aria-live="polite">図形をドラッグして移動できます。</span><span id="footerMeta"></span></div>
         </div>
@@ -73,7 +66,7 @@
         <div class="manual-empty" id="manualSetup"><h2>フローから、手順書を作成します。</h2><p>作業・判断を手順の項目として取り込みます。章の順番や掲載する項目は後から変更できます。</p><p>作業名・担当・分岐条件は図と連動します。本文は広い編集欄で入力できます。</p><div class="setup-actions"><button class="primary" type="button" id="manualStart">このフローから作成</button><button class="secondary" type="button" id="manualDemo">入力例付きで試す</button></div></div>
         <section class="manual-guide" id="manualGuide" aria-label="作成の案内"><div><strong>1 フロー → 2 手順を記入 → 3 点検・プレビュー → 4 保存・配布</strong><p>上部の「保存」は編集を再開するためのJSON保存です。プレビューのHTML・PDFは閲覧・配布用です。端末内の自動復旧だけに頼らず、JSONを保存してください。</p><span id="manualProgress" role="status" aria-live="polite"></span></div><div class="manual-inline-actions"><button class="secondary" type="button" id="manualNext">次の未記入へ</button><button class="secondary" type="button" id="manualCheck" aria-expanded="false" aria-controls="manualCheckList">文書を点検</button></div><div id="manualCheckList" hidden></div></section>
         <div class="manual-workbench" id="manualWorkbench" hidden>
-          <aside class="manual-outline-panel"><div class="manual-outline-head"><h2>章と手順</h2><p id="manualSummary"></p></div><input class="manual-search" id="manualSearch" type="search" placeholder="見出し・本文を検索" aria-label="手順を検索"><div class="manual-outline-actions"><button class="secondary" type="button" id="manualAddChapter">＋ 章を追加</button><button class="secondary" type="button" id="manualAddText">＋ 説明を追加</button><button class="secondary" type="button" id="manualSync" title="フローに新しく追加した作業・判断を取り込みます">図の作業を取り込む</button></div><div id="manualOutline"></div><details class="manual-settings"><summary>文書の基本情報</summary><label class="manual-field">所管部署<input id="manualDepartment" data-manual-meta="department" maxlength="100"></label><label class="manual-field">文書の版<input id="manualRevision" data-manual-meta="revision" maxlength="50"></label><label class="manual-field">作成者<input id="manualMeta-author" data-manual-meta="author" maxlength="100"></label><label class="manual-field">確認者<input id="manualMeta-reviewer" data-manual-meta="reviewer" maxlength="100"></label><label class="manual-field">更新日<input id="manualMeta-date" data-manual-meta="date" type="date"></label><label class="manual-field">改訂内容<textarea id="manualMeta-changes" data-manual-meta="changes" rows="4" maxlength="6000"></textarea></label><p class="property-help">確認者は手入力の記録です。システムによる承認ではありません。</p></details></aside>
+
           <section class="manual-editor" id="manualEditor" aria-label="手順の編集"></section>
         </div>
       </section>
@@ -85,7 +78,7 @@
   <div id="toast" role="status" aria-live="polite"></div>
   <dialog id="exportDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>図を書き出す</h2><p>PNG画像、または印刷画面からPDFとして保存します。</p></div><label>用紙サイズ<select id="paperSize"><option value="a4">A4 横</option><option value="a3">A3 横</option></select></label><div class="property-grid"><div><label for="pageMargin">余白（mm）</label><input id="pageMargin" type="number" min="0" max="30" value="10"></div><div><label for="pngDpi">PNG解像度</label><select id="pngDpi"><option value="150">150 dpi</option><option value="300">300 dpi</option></select></div></div><div class="export-preview" id="exportPreview"></div><p class="export-warning" id="exportWarning"></p><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button><button type="button" id="pngBtn" class="secondary">PNGを保存</button><button type="button" id="pdfBtn" class="primary">PDFを印刷・保存</button></div></form></dialog>
   <dialog id="diagnosticsDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>図全体を点検</h2><p>警告は編集を止めません。業務上必要な表現か確認してください。</p></div><div id="diagnosticsList"></div><div class="modal-actions"><button value="cancel" class="secondary">閉じる</button></div></form></dialog>
-  <dialog id="helpDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>操作ガイド</h2></div><ol class="quick-guide"><li><strong>図形を置く</strong><p>担当レーンを選んで図形パネルの種類をクリック。「配置位置を指定」で場所を先に決めることもできます。</p></li><li><strong>作業をつなぐ</strong><p>図形を選んで「つなぐ」を押し、次の図形をクリックします。Escでキャンセルできます。</p></li><li><strong>矢印を調整</strong><p>線をドラッグして経路を移動。両端の丸は図形の周囲へ、条件ラベルは好きな位置へドラッグできます。</p></li><li><strong>画面を移動・整列</strong><p>空白をドラッグすると画面が動きます。Shift＋クリックで複数選択し、編集パネルで整列できます。</p></li><li><strong>表示を調整</strong><p>上部の「ライト」「ダーク」で表示を切り替えます。キャンバスの外側の余白でホイールを動かすと、ページをスクロールできます。「図の倍率」で図だけを拡大・縮小し、「全体表示」で作図領域に収めます。ブラウザを拡大すると編集パネルは下段へ移り、狭い画面では図形パネルが上段へ移ります。作図領域を広げたい場合は「図形を隠す」「編集を隠す」を使います。パネル内に収まらない項目はスクロールして選べます。</p></li></ol><div class="modal-actions"><button value="cancel" class="primary">編集に戻る</button></div></form></dialog>
+  <dialog id="helpDialog" class="modal"><form method="dialog"><div class="modal-head"><h2>操作ガイド</h2></div><ol class="quick-guide"><li><strong>図形を置く</strong><p>キャンバス上部で追加先の担当を選び、「＋ 作業」「判断」「その他の図形」をクリック。マニュアル作成後は作業・判断に対応する手順も追加されます。「配置位置を指定」で場所を先に決めることもできます。</p></li><li><strong>作業をつなぐ</strong><p>図形を選んで「つなぐ」を押し、次の図形をクリックします。Escでキャンセルできます。</p></li><li><strong>矢印を調整</strong><p>線をドラッグして経路を移動。両端の丸は図形の周囲へ、条件ラベルは好きな位置へドラッグできます。</p></li><li><strong>画面を移動・整列</strong><p>空白をドラッグすると画面が動きます。Shift＋クリックで複数選択し、編集パネルで整列できます。</p></li><li><strong>表示を調整</strong><p>上部の「ライト」「ダーク」で表示を切り替えます。キャンバスの外側の余白でホイールを動かすと、ページをスクロールできます。「図の倍率」で図だけを拡大・縮小し、「全体表示」で作図領域に収めます。ブラウザを拡大すると編集パネルは下段へ移り、狭い画面では章一覧が上段へ移ります。作図領域を広げたい場合は「章一覧を隠す」「編集を隠す」を使います。パネル内に収まらない項目はスクロールして選べます。</p></li></ol><div class="modal-actions"><button value="cancel" class="primary">編集に戻る</button></div></form></dialog>
   <div id="printArea" aria-hidden="true"></div>
   <script src="manual.js"></script>
   <script src="app.js"></script>

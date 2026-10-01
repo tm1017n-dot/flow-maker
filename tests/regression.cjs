@@ -215,6 +215,25 @@ get('undoBtn').onclick();assert.equal(api.model.manual.chapters.at(-1).id,addedC
 const retainedEntry=api.model.manual.entries.at(-1).id;chapterSelect(addedChapter.id);manualAction('deleteChapter');
 assert(api.model.manual.entries.some(e=>e.id===retainedEntry));assert(!api.model.manual.chapters.some(c=>c.id===addedChapter.id));
 assert.doesNotThrow(()=>api.validate(api.model));
+// Canvas toolbar selects the lane and atomically adds a linked procedure.
+get('tabFlow').onclick();const beforeLaneChoice=JSON.stringify(api.model);
+fire('addToLane','change',{value:api.model.lanes[1].id});assert.equal(JSON.stringify(api.model),beforeLaneChoice);
+const nodeCountBeforeAdd=api.model.nodes.length,entryCountBeforeAdd=api.model.manual.entries.length;
+api.addNode('task');const toolbarNode=api.model.nodes.at(-1);
+assert.equal(toolbarNode.laneId,api.model.lanes[1].id);assert.equal(api.model.manual.entries.at(-1).nodeId,toolbarNode.id);
+assert.equal(api.model.manual.entries.length,entryCountBeforeAdd+1);
+get('undoBtn').onclick();assert.equal(api.model.nodes.length,nodeCountBeforeAdd);assert.equal(api.model.manual.entries.length,entryCountBeforeAdd);
+get('redoBtn').onclick();assert.equal(api.model.manual.entries.at(-1).nodeId,toolbarNode.id);
+const navEntry=api.model.manual.entries.at(-1);
+fire('shapePanel','click',{closest:selector=>selector==='[data-entry]'?{dataset:{entry:navEntry.id}}:null});assert.equal(get('manualView').hidden,false);
+const metadataTarget={matches:()=>true,dataset:{manualMeta:'department'},value:'業務担当'};
+fire('shapePanel','focusin',metadataTarget);fire('shapePanel','input',metadataTarget);fire('shapePanel','change',metadataTarget);assert.equal(api.model.manual.meta.department,'業務担当');
+get('undoBtn').onclick();assert.notEqual(api.model.manual.meta.department,'業務担当');
+api.load(manualSaved,false);get('tabFlow').onclick();get('manualAddChapter').onclick();assert.equal(get('manualView').hidden,false);get('undoBtn').onclick();
+api.load(manualSaved,false);api.select('node',api.model.nodes[1].id);action('duplicate');const copiedNode=api.model.nodes.at(-1);assert(api.model.manual.entries.some(e=>e.nodeId===copiedNode.id));get('undoBtn').onclick();assert(!api.model.manual.entries.some(e=>e.nodeId===copiedNode.id));
+const capped=JSON.parse(JSON.stringify(manualSaved));while(capped.manual.entries.length<300){const i=capped.manual.entries.length;capped.manual.entries.push({...JSON.parse(JSON.stringify(capped.manual.entries[0])),id:'capacity-'+i,code:'C'+i});}
+api.load(capped,false);const capSnapshot=JSON.stringify(api.model);api.addNode('decision');assert.equal(JSON.stringify(api.model),capSnapshot);
+api.load(manualSaved,false);get('tabManual').onclick();
 // Guidance, actionable review and supplemental document data.
 get('manualCheck').onclick();assert.equal(get('manualCheckList').hidden,false);
 const checkDom=get('manualCheckList').innerHTML;
@@ -291,5 +310,5 @@ api.load(initial,false);assert.equal(api.model.version,1);assert.equal(api.model
   assert.equal(get('pngBtn').disabled,false);assert.match(get('toast').textContent,/失敗/);
  }
  downloadFails=false;emptyPng=false;assert.equal(exportErrors.length,2);
- console.log('PASS: flow regression; manual editing/history, review/navigation, safe references, image upload/race/limits, metadata, duplication, relinking and legacy JSON.');
+ console.log('PASS: flow regression, canvas toolbar and document navigation; manual editing/history, review/navigation, safe references, image upload/race/limits, metadata, duplication, relinking and legacy JSON.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

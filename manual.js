@@ -146,12 +146,12 @@
     function render(){
       if(!model())return;
       if(loadedId!==model().id){loadedId=model().id;entryId=null;chapterId=null;query='';before=null;checking=false;$('manualCheck').setAttribute('aria-expanded','false');$('manualSearch').value='';}
-      const has=Boolean(manual());$('manualGuide').hidden=!has;$('manualSetup').hidden=has;$('manualWorkbench').hidden=!has;
+      const has=Boolean(manual());for(const id of ['manualDepartment','manualRevision',...Object.keys(optionalMeta).map(key=>'manualMeta-'+key)]){$(id).disabled=!has;if(!has)$(id).value='';}$('manualGuide').hidden=!has;$('manualSetup').hidden=has;$('manualWorkbench').hidden=!has;
       $('manualDownload').disabled=!has;$('manualPrint').disabled=!has;$('manualReview').disabled=!has;
-      if(!has){$('manualPreviewStatus').textContent='';$('manualPreviewBody').innerHTML='<div class="manual-empty"><h2>まだ手順書がありません</h2><p>「手順」画面で、このフローからマニュアルを作成してください。</p><button type="button" class="primary" data-open-manual>手順を作成する</button></div>';return;}
+      if(!has){$('manualOutline').innerHTML='<p class="property-help">手順書はまだありません。「手順」画面から作成できます。</p><button type="button" class="secondary" data-open-manual>手順書を作成</button>';$('manualSummary').textContent='フローから手順を作成できます。';$('manualSearch').disabled=true;for(const id of ['manualAddChapter','manualAddText','manualSync'])$(id).disabled=true;$('manualPreviewStatus').textContent='';$('manualPreviewBody').innerHTML='<div class="manual-empty"><h2>まだ手順書がありません</h2><p>「手順」画面で、このフローからマニュアルを作成してください。</p><button type="button" class="primary" data-open-manual>手順を作成する</button></div>';return;}
       if(entryId&&!selectedEntry())entryId=null;if(chapterId&&!manual().chapters.some(c=>c.id===chapterId))chapterId=null;
       if(!chapterId)chapterId=manual().chapters[0].id;
-      if(view==='manual'){renderOutline();renderForm();}
+      $('manualSearch').disabled=false;for(const id of ['manualAddChapter','manualAddText','manualSync'])$(id).disabled=false;renderOutline();if(view==='manual')renderForm();
       renderGuide();if(view==='preview')$('manualPreviewBody').innerHTML=documentBody(model(),ctx.svg(),true);
     }
     function openNode(id){
@@ -182,7 +182,7 @@
         if(name==='copyMemo'){const text=nodeFor(model(),e).description,combined=e.fields.preparation+(e.fields.preparation?'\n':'')+text;if(combined.length>6000){ctx.notify('6000文字を超えるため取り込めません。');return;}e.fields.preparation=combined;}
       });
     }
-    function input(event){const target=event.target,e=selectedEntry();
+    function input(event){if(!manual())return;const target=event.target,e=selectedEntry();
       if(target.dataset.manualMeta && ['department','revision',...Object.keys(optionalMeta)].includes(target.dataset.manualMeta))manual().meta[target.dataset.manualMeta]=target.value;
       else if(e && target.dataset.imageCaption!==undefined && e.images?.[Number(target.dataset.imageCaption)])e.images[Number(target.dataset.imageCaption)].caption=target.value;
       else if(target.dataset.chapterField)selectedChapter()[target.dataset.chapterField]=target.value;
@@ -190,9 +190,10 @@
       else return;
       ctx.touch();
     }
-    $('manualView').addEventListener('focusin',event=>{if(event.target.matches('[data-manual-field],[data-manual-meta],[data-chapter-field],[data-image-caption]'))before=snapshot();});
-    $('manualView').addEventListener('input',input);
-    $('manualView').addEventListener('change',event=>{
+    for(const surface of ['manualView','shapePanel'])$(surface).addEventListener('focusin',event=>{if(manual()&&event.target.matches('[data-manual-field],[data-manual-meta],[data-chapter-field],[data-image-caption]'))before=snapshot();});
+    for(const surface of ['manualView','shapePanel'])$(surface).addEventListener('input',input);
+    for(const surface of ['manualView','shapePanel'])$(surface).addEventListener('change',event=>{
+      if(!manual())return;
       if(event.target.dataset.manualImages!==undefined){addImages(event.target);return;}
       if(event.target.dataset.manualAction==='relink'){const node=model().nodes.find(n=>n.id===event.target.value);if(node&&selectedEntry()&&!manual().entries.some(item=>item.nodeId===node.id))change(()=>{selectedEntry().nodeId=node.id;});return;}
       if(!event.target.matches('[data-manual-field],[data-manual-meta],[data-chapter-field],[data-image-caption]'))return;
@@ -204,7 +205,7 @@
       renderGuide(false);if(e){const warnings=issues(model(),e);$('manualEntryHints').hidden=!warnings.length;$('manualEntryHints').innerHTML=warnings.map(w=>`<span>${esc(w)}</span>`).join('');}
       if(event.target.dataset.manualField==='chapterId'){chapterId=e.chapterId;renderOutline();}
     });
-    $('manualView').addEventListener('click',event=>{const item=event.target.closest('[data-entry]'),chapter=event.target.closest('[data-chapter]'),button=event.target.closest('[data-manual-action]');if(item){entryId=item.dataset.entry;if(!selectedEntry())return;chapterId=selectedEntry().chapterId;render();$('manualEditor').scrollIntoView?.({block:'start',behavior:'smooth'});}else if(chapter){entryId=null;chapterId=chapter.dataset.chapter;render();}else if(button)action(button.dataset.manualAction);else {const remove=event.target.closest('[data-remove-image]');if(remove&&selectedEntry()&&confirm('この画像を削除しますか？'))change(()=>selectedEntry().images.splice(Number(remove.dataset.removeImage),1));}});
+    for(const surface of ['manualView','shapePanel'])$(surface).addEventListener('click',event=>{const item=event.target.closest('[data-entry]'),chapter=event.target.closest('[data-chapter]'),button=event.target.closest('[data-manual-action]');if(item){entryId=item.dataset.entry;if(!selectedEntry())return;chapterId=selectedEntry().chapterId;setView('manual');$('manualEditor').scrollIntoView?.({block:'start',behavior:'smooth'});}else if(chapter){entryId=null;chapterId=chapter.dataset.chapter;setView('manual');}else if(button)action(button.dataset.manualAction);else if(event.target.closest('[data-open-manual]'))setView('manual');else {const remove=event.target.closest('[data-remove-image]');if(remove&&selectedEntry()&&confirm('この画像を削除しますか？'))change(()=>selectedEntry().images.splice(Number(remove.dataset.removeImage),1));}});
     async function addImages(input){
       const selected=selectedEntry(),original=model();if(!selected)return;const id=selected.id,files=Array.from(input.files||[]);input.value='';if(!files.length)return;
       if(files.length+(selected.images||[]).length>6){ctx.notify('画像は1項目につき最大6枚です。');return;}
@@ -229,15 +230,20 @@
     $('manualReview').onclick=()=>{checking=true;setView('manual');$('manualCheck').setAttribute('aria-expanded','true');$('manualGuide').scrollIntoView?.({block:'start'});};
     $('manualSearch').addEventListener('input',event=>{query=event.target.value.toLowerCase();renderOutline();});
     $('manualStart').onclick=()=>start();$('manualDemo').onclick=()=>start(true);
-    $('manualAddChapter').onclick=()=>change(()=>{if(manual().chapters.length>=50){ctx.notify('章は最大50です。');return;}const ch={id:uid(),title:'新しい章'};manual().chapters.push(ch);entryId=null;chapterId=ch.id;});
-    $('manualAddText').onclick=()=>change(()=>{if(manual().entries.length>=300){ctx.notify('項目は最大300です。');return;}const e={id:uid(),chapterId:selectedChapter().id,nodeId:null,code:nextCode('G'),title:'新しい説明',included:true,fields:emptyFields()};manual().entries.push(e);entryId=e.id;});
+    $('manualAddChapter').onclick=()=>{change(()=>{if(manual().chapters.length>=50){ctx.notify('章は最大50です。');return;}const ch={id:uid(),title:'新しい章'};manual().chapters.push(ch);entryId=null;chapterId=ch.id;});setView('manual');};
+    $('manualAddText').onclick=()=>{change(()=>{if(manual().entries.length>=300){ctx.notify('項目は最大300です。');return;}const e={id:uid(),chapterId:selectedChapter().id,nodeId:null,code:nextCode('G'),title:'新しい説明',included:true,fields:emptyFields()};manual().entries.push(e);entryId=e.id;});setView('manual');};
     $('manualSync').onclick=()=>change(()=>{const chapter=manual().chapters.find(c=>c.title==='業務手順')||selectedChapter();for(const node of model().nodes.filter(n=>['task','decision'].includes(n.type)))if(!manual().entries.some(e=>e.nodeId===node.id)&&manual().entries.length<300)manual().entries.push({id:uid(),chapterId:chapter.id,nodeId:node.id,code:nextCode('S'),title:node.label.slice(0,200),included:true,fields:emptyFields()});});
     $('tabFlow').onclick=()=>setView('flow');$('tabManual').onclick=()=>setView('manual');$('tabPreview').onclick=()=>setView('preview');
     $('workspaceTabs').addEventListener('keydown',event=>{const names=['flow','manual','preview'];let i=names.indexOf(view);if(event.key==='ArrowRight')i=(i+1)%3;else if(event.key==='ArrowLeft')i=(i+2)%3;else if(event.key==='Home')i=0;else if(event.key==='End')i=2;else return;event.preventDefault();setView(names[i]);$(['tabFlow','tabManual','tabPreview'][i]).focus();});
     $('manualPreviewBody').addEventListener('click',event=>{const edit=event.target.closest('[data-manual-edit]');if(edit){entryId=edit.dataset.manualEdit;chapterId=selectedEntry().chapterId;setView('manual');}else if(event.target.closest('[data-open-manual]'))setView('manual');});
     $('manualDownload').onclick=()=>{if(manual()){try{ctx.download(new Blob([html(model(),ctx.svg())],{type:'text/html;charset=utf-8'}),ctx.filename('html'));ctx.notify('閲覧用HTMLのダウンロードを開始しました。');}catch{ctx.notify('HTMLのダウンロードを開始できませんでした。');}}};
     $('manualPrint').onclick=()=>{if(!manual())return;$('printArea').innerHTML=documentBody(model(),ctx.svg());document.getElementById('pageStyle')?.remove();const s=document.createElement('style');s.id='pageStyle';s.textContent='@page{size:A4 portrait;margin:14mm}@media print{#printArea{position:static!important;width:auto!important;height:auto!important}.manual-document{margin:0}}';document.head.append(s);setTimeout(()=>window.print(),60);};
-    return {render,setView,openNode,get view(){return view;}};
+    function addLinkedNode(node){
+      if(!manual()||!['task','decision'].includes(node.type))return;
+      const chapter=manual().chapters.find(c=>c.title==='業務手順')||selectedChapter();
+      manual().entries.push({id:uid(),chapterId:chapter.id,nodeId:node.id,code:nextCode('S'),title:node.label.slice(0,200),included:true,fields:emptyFields()});
+    }
+    return {render,setView,openNode,addLinkedNode,get view(){return view;}};
   }
   globalThis.FlowManual={create,validate,validateImage,issues,review,titleFor,documentBody,html,init};
 })();

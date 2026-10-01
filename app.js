@@ -92,7 +92,7 @@
 
   function setPanelCollapsed(panel, collapsed) {
     const button = $(panel === 'sidebar' ? 'toggleSidebar' : 'toggleInspector');
-    const label = panel === 'sidebar' ? '図形' : '編集';
+    const label = panel === 'sidebar' ? '章一覧' : '編集';
     const app = document.querySelector('.app');
     if (collapsed) app.classList.add(`${panel}-collapsed`);
     else app.classList.remove(`${panel}-collapsed`);
@@ -281,6 +281,8 @@
   function render() {
     renderCanvas();
     renderInspector();
+    $('addToLane').innerHTML=model.lanes.map(lane=>`<option value="${esc(lane.id)}" ${lane.id===activeLaneId?'selected':''}>${esc(lane.name)}</option>`).join('');
+    $('addToLane').value=activeLaneId;
     manualUI.render();
     $('counts').textContent = `${model.lanes.length} レーン・${model.nodes.length} 図形`;
     $('footerMeta').textContent = `${model.edges.length} 接続`;
@@ -358,12 +360,14 @@
   }
 
   function addNode(type){
+    if(!Object.hasOwn(SIZES,type))return;
+    if(model.manual&&['task','decision'].includes(type)&&model.manual.entries.length>=300){notify('手順は最大300件です。不要な項目を整理してから追加してください。');return;}
     const before=clone(model),lane=getLane(activeLaneId)||model.lanes[0],g=SIZES[type];
     const others=model.nodes.filter(n=>n.laneId===lane.id),primary=selected?.kind==='node'?getNode(selected.id):null;
     let x=laneCenter(lane.id),y=primary&&primary.laneId===lane.id?primary.y+nodeGeometry(primary).h/2+g[1]/2+50:Math.max(215,...others.map(n=>n.y+nodeGeometry(n).h/2+g[1]/2+50));
     if(insertionPoint){x=insertionPoint.x;y=Math.max(contentTop()+g[1]/2,insertionPoint.y);}
     const n={id:uid(),type,label:{start:'開始',task:'新しい作業',decision:'条件を確認',document:'帳票名',system:'システム名'}[type],laneId:lane.id,x,y,description:''};
-    model.nodes.push(n);selected={kind:'node',id:n.id};multiSelection=new Set([n.id]);insertionPoint=null;placing=false;changed(before);$('canvasScroll').scrollTop=Math.max(0,(y-250)*zoom);
+    model.nodes.push(n);manualUI.addLinkedNode(n);selected={kind:'node',id:n.id};multiSelection=new Set([n.id]);insertionPoint=null;placing=false;changed(before);$('moreShapes').open=false;$('canvasScroll').scrollTop=Math.max(0,(y-250)*zoom);notify(model.manual&&['task','decision'].includes(type)?'図形と対応する手順を追加しました。「手順を編集」から本文を書けます。':'図形を追加しました。名称や担当は編集欄で変更できます。');
   }
   function addLane(){if(model.lanes.length>=12){notify('追加できる担当レーンは最大12です。');return;}const before=clone(model);const l={id:uid(),name:`担当 ${model.lanes.length+1}`};model.lanes.push(l);selected={kind:'lane',id:l.id};activeLaneId=l.id;multiSelection.clear();changed(before);$('canvasScroll').scrollLeft=width()*zoom;}
   function deleteSelected() {
@@ -460,6 +464,7 @@
   function redoAction() { restoreHistory(redo, undo); }
 
   $('palette').addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(b)addNode(b.dataset.add);});$('addLane').onclick=addLane;
+  $('addToLane').addEventListener('change',e=>{if(getLane(e.target.value)){activeLaneId=e.target.value;insertionPoint=null;placing=false;render();}});
   $('canvas').addEventListener('pointerdown',e=>{
     suppressClick=false;if(e.button!==undefined&&e.button!==0)return;if(connecting||placing)return;
     const endpoint=e.target.closest('[data-endpoint-handle]'),bend=e.target.closest('[data-bend-handle]'),label=e.target.closest('[data-label-handle]'),route=e.target.closest('[data-route-handle]'),group=e.target.closest('[data-node]'),p=coordinate(e);
@@ -492,8 +497,8 @@
     if(d.moved)changed(d.before);else render();
   });
   $('canvas').addEventListener('pointercancel',()=>{if(drag){if(drag.before)model=drag.before;drag=null;guides=[];render();}});
-  $('canvas').addEventListener('click',e=>{if(suppressClick){suppressClick=false;return;}if(drag)return;const node=e.target.closest('[data-node]'),edge=e.target.closest('[data-edge]'),association=e.target.closest('[data-association]'),lane=e.target.closest('[data-lane]');if(placing){const p=coordinate(e);activeLaneId=laneAt(p.x).id;insertionPoint=p;placing=false;selected={kind:'lane',id:activeLaneId};multiSelection.clear();render();notify('配置位置を指定しました。図形パネルから図形を選んでください。');return;}if(connecting){if(node)connectTo(node.dataset.node);return;}if(node)select('node',node.dataset.node,e.shiftKey);else if(edge)select('edge',edge.dataset.edge);else if(association)select('association',association.dataset.association);else if(lane)select('lane',lane.dataset.lane);else{selected=null;multiSelection.clear();render();}});
-  $('inspectorBody').addEventListener('click',e=>{const arrangement=e.target.closest('[data-arrange]')?.dataset.arrange;if(arrangement){arrange(arrangement);return;}if(e.target.id==='cancelConnect'){cancelConnection();render();return;}const action=e.target.closest('[data-action]')?.dataset.action;if(!action||!selected)return;if(action==='manual'){manualUI.openNode(selected.id);return;}if(action==='delete'){deleteSelected();return;}if(action==='resetRoute'){const before=clone(model),e=model.edges.find(e=>e.id===selected.id);for(const key of ['routeAxis','bend','fromPort','toPort','fromOffset','toOffset','labelDx','labelDy'])delete e[key];changed(before);return;}if(action==='connect'||action==='associate'){connecting={mode:action,from:selected.id};pendingPointer=null;placing=false;insertionPoint=null;render();return;}if(action==='duplicate'){const n=getNode(selected.id),before=clone(model),copy={...clone(n),id:uid(),x:n.x+28,y:n.y+105};model.nodes.push(copy);selected={kind:'node',id:copy.id};multiSelection=new Set([copy.id]);changed(before);return;}if(action==='laneLeft'||action==='laneRight')moveLane(action==='laneLeft'?-1:1);});
+  $('canvas').addEventListener('click',e=>{if(suppressClick){suppressClick=false;return;}if(drag)return;const node=e.target.closest('[data-node]'),edge=e.target.closest('[data-edge]'),association=e.target.closest('[data-association]'),lane=e.target.closest('[data-lane]');if(placing){const p=coordinate(e);activeLaneId=laneAt(p.x).id;insertionPoint=p;placing=false;selected={kind:'lane',id:activeLaneId};multiSelection.clear();render();notify('配置位置を指定しました。キャンバス上部から追加する図形を選んでください。');return;}if(connecting){if(node)connectTo(node.dataset.node);return;}if(node)select('node',node.dataset.node,e.shiftKey);else if(edge)select('edge',edge.dataset.edge);else if(association)select('association',association.dataset.association);else if(lane)select('lane',lane.dataset.lane);else{selected=null;multiSelection.clear();render();}});
+  $('inspectorBody').addEventListener('click',e=>{const arrangement=e.target.closest('[data-arrange]')?.dataset.arrange;if(arrangement){arrange(arrangement);return;}if(e.target.id==='cancelConnect'){cancelConnection();render();return;}const action=e.target.closest('[data-action]')?.dataset.action;if(!action||!selected)return;if(action==='manual'){manualUI.openNode(selected.id);return;}if(action==='delete'){deleteSelected();return;}if(action==='resetRoute'){const before=clone(model),e=model.edges.find(e=>e.id===selected.id);for(const key of ['routeAxis','bend','fromPort','toPort','fromOffset','toOffset','labelDx','labelDy'])delete e[key];changed(before);return;}if(action==='connect'||action==='associate'){connecting={mode:action,from:selected.id};pendingPointer=null;placing=false;insertionPoint=null;render();return;}if(action==='duplicate'){if(model.manual&&['task','decision'].includes(getNode(selected.id).type)&&model.manual.entries.length>=300){notify('手順は最大300件です。');return;}const n=getNode(selected.id),before=clone(model),copy={...clone(n),id:uid(),x:n.x+28,y:n.y+105};model.nodes.push(copy);manualUI.addLinkedNode(copy);selected={kind:'node',id:copy.id};multiSelection=new Set([copy.id]);changed(before);return;}if(action==='laneLeft'||action==='laneRight')moveLane(action==='laneLeft'?-1:1);});
   $('inspectorBody').addEventListener('focusin',e=>{if(e.target.matches('[data-field]'))editBefore=clone(model);});
   $('inspectorBody').addEventListener('input',e=>{
     const f=e.target.dataset.field;if(!f||!selected)return;
